@@ -5,6 +5,7 @@ import type { Channel, OtpChallenge, PublicUser } from '../types'
 export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; channel: Channel }
 
 const isChallenge = (r: unknown): r is OtpChallenge => typeof r === 'object' && r !== null && 'challengeId' in r
+let restoring: Promise<void> | null = null // восстановление сессии при старте — один запрос на всё приложение
 
 // Сессия живёт в httpOnly-cookie на сервере; здесь хранится только профиль для интерфейса.
 // Вход и регистрация проходят в два шага: данные → код подтверждения (email или SMS) → сессия.
@@ -12,10 +13,14 @@ export const useAuth = defineStore('auth', {
   state: () => ({ user: null as PublicUser | null }),
   getters: { isAuth: (s): boolean => s.user !== null },
   actions: {
-    /** Восстанавливает сессию при старте. Нет сессии или нет связи — остаёмся гостем.
-     *  Короткий таймаут: до ответа сайт не показывается, зависший сервер не должен держать белый экран. */
+    /** Восстанавливает сессию при старте (повторные вызовы ждут тот же запрос). Нет сессии или нет связи — остаёмся гостем.
+     *  Сайт при этом уже показан: сервер на Vercel после простоя «просыпается» несколько секунд. */
+    restore(): Promise<void> {
+      restoring ??= this.fetchMe()
+      return restoring
+    },
     async fetchMe() {
-      try { this.user = await api<PublicUser>('/auth/me', { timeout: 5000 }) } catch { this.user = null }
+      try { this.user = await api<PublicUser>('/auth/me') } catch { this.user = null }
     },
     /** Шаг 1 регистрации: сервер проверяет данные и отправляет код. Аккаунт появится только после verify(). */
     async register(data: RegisterData): Promise<OtpChallenge> {

@@ -10,10 +10,8 @@ import { useAuth } from './stores/auth'
 import './styles/tokens.css'
 import './styles/base.css'
 
-async function bootstrap() {
-  const app = createApp(App)
-  app.use(createPinia())
-  await useAuth().fetchMe() // восстановить сессию до первой навигации: от неё зависят защищённые маршруты
-  app.use(router).use(i18n).directive('reveal', reveal).directive('parallax', parallax).directive('tilt', tilt).mount('#app')
-}
-bootstrap()
+const app = createApp(App)
+app.use(createPinia())
+// сессия восстанавливается параллельно с показом сайта; защищённые маршруты дожидаются её в router.beforeEach
+void useAuth().restore()
+app.use(router).use(i18n).directive('reveal', reveal).directive('parallax', parallax).directive('tilt', tilt).mount('#app')

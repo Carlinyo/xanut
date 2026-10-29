@@ -11,8 +11,18 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 Запросы `/api` Vite передаёт серверу на `http://127.0.0.1:3000` (`vite.config.ts`).
+Чтобы вести разработку без локального сервера, на задеплоенном API, создайте `.env.local` со строкой
+`API_PROXY_TARGET=https://xanutback.vercel.app`.
 
-Сборка для хостинга: `npm run build` → папка `dist`. Отдавайте её с того же домена, что и API (например, nginx: `/` → `dist`, `/api` → сервер).
+## Деплой
+
+API задеплоен на `https://xanutback.vercel.app`. Сайт обращается к нему **через свой же домен** (`/api/...`):
+на Vercel это делает `vercel.json` (rewrites), там же — отдача `index.html` для всех адресов вроде `/products/5`.
+Не задавайте `VITE_API_URL` с адресом API напрямую: cookie сессии у сервера `SameSite=Lax`, а разные поддомены
+`*.vercel.app` браузер считает разными сайтами — вход перестанет сохраняться.
+
+Vercel: импортируйте репозиторий, пресет Vite (`npm run build` → `dist`) определится сам. Другой хостинг —
+`npm run build`, папку `dist` отдавать со своего домена, `/api/*` проксировать на `https://xanutback.vercel.app/api/*`.
 
 ## Где что менять
 
