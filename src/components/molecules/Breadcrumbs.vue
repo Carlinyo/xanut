@@ -9,7 +9,7 @@ defineProps<{ items: { label: string; to?: LinkTo }[] }>()
     <template v-for="(i, n) in items" :key="n">
       <span v-if="n" aria-hidden="true">/</span>
       <RouterLink v-if="i.to" :to="i.to">{{ i.label }}</RouterLink>
-      <span v-else class="crumbs__cur">{{ i.label }}</span>
+      <span v-else class="crumbs__cur" aria-current="page">{{ i.label }}</span>
     </template>
   </nav>
 </template>

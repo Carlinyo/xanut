@@ -3,6 +3,8 @@ import { api, ApiError } from '../api'
 import type { Category, KebabConfig, Product, ShopConfig } from '../types'
 import { setMobileCodes } from '../utils/phone'
 
+let pending: Promise<void> | null = null // идущая загрузка: повторные вызовы ждут её, а не запускают вторую
+
 export const useCatalog = defineStore('catalog', {
   state: () => ({
     categories: [] as Category[],
@@ -14,9 +16,15 @@ export const useCatalog = defineStore('catalog', {
     error: '',
   }),
   actions: {
-    /** Загружает каталог один раз; при ошибке можно вызвать снова (кнопка «Повторить»). */
-    async load() {
-      if (this.loading || this.ready) return
+    /** Загружает каталог один раз; при ошибке можно вызвать снова (кнопка «Повторить»).
+     *  force — загрузить заново, даже если каталог уже есть (например, сервер сказал, что корзина устарела). */
+    load(force = false): Promise<void> {
+      if (pending) return pending
+      if (this.ready && !force) return Promise.resolve()
+      pending = this.fetchAll().finally(() => { pending = null })
+      return pending
+    },
+    async fetchAll() {
       this.loading = true
       this.error = ''
       try {

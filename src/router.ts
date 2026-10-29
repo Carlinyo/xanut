@@ -11,7 +11,8 @@ import PrivacyView from './views/PrivacyView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior: () => ({ top: 0 }),
+  // «Назад»/«Вперёд» в браузере возвращают на прежнее место страницы, новый переход — наверх
+  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
   routes: [
     { path: '/', component: HomeView },
     { path: '/products', component: CatalogView },

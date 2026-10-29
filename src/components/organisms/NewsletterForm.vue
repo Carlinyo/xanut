@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { t } from '../../i18n'
-import { api } from '../../api'
-import { rules } from '../../validators'
+import { api, ApiError, commonErrorKey } from '../../api'
+import { rules, serverFieldErrors } from '../../validators'
 import InfoPanel from '../molecules/InfoPanel.vue'
 import AppInput from '../atoms/AppInput.vue'
 import AppButton from '../atoms/AppButton.vue'
 import PrivacyNote from '../molecules/PrivacyNote.vue'
 
 const email = ref(''), done = ref(false), busy = ref(false), error = ref('')
+watch(email, () => { error.value = '' })
 async function subscribe() {
   if (busy.value) return
   const r = rules.email(email.value)
@@ -18,8 +19,9 @@ async function subscribe() {
   try {
     await api('/subscribe', { method: 'POST', body: { email: email.value } }) // сервер не дублирует один и тот же email
     done.value = true
-  } catch {
-    error.value = t('errors.generic')
+  } catch (e) {
+    // сервер проверяет и домен почты (одноразовые ящики, опечатки в домене) — показываем точную причину
+    error.value = (e instanceof ApiError && e.code === 'VALIDATION' && serverFieldErrors(e.issues).email) || t(commonErrorKey(e))
   } finally { busy.value = false }
 }
 </script>

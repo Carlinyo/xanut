@@ -3,16 +3,19 @@ import { t } from '../i18n'
 
 interface Section { title: string; text?: string[]; items?: string[] }
 const sections = t('privacy.sections') as Section[]
-// {email}, {phone}, {address}, {brand} подставляются из locales/hy.json — контакты правятся в одном месте
-const fill = (s: string): string =>
-  s.replace('{email}', t('contact.email')).replace('{phone}', t('contact.phone')).replace('{address}', t('contact.address')).replace('{brand}', t('brand.name'))
+// {email}, {phone}, {address}, {brand} подставляются из locales/hy.json — контакты правятся в одном месте.
+// Параметры передаются и в t(): без них t() заменяет незнакомые {…} пустой строкой (так пропадало название во вступлении).
+const params: Record<string, string> = {
+  email: t('contact.email'), phone: t('contact.phone'), address: t('contact.address'), brand: t('brand.name'),
+}
+const fill = (s: string): string => s.replace(/\{(\w+)\}/g, (m, k: string) => params[k] ?? m)
 </script>
 
 <template>
   <div class="wrap page doc">
     <h1>{{ $t('privacy.title') }}</h1>
     <p class="muted">{{ $t('privacy.updated') }}</p>
-    <p class="lead">{{ fill($t('privacy.intro')) }}</p>
+    <p class="lead">{{ $t('privacy.intro', params) }}</p>
     <section v-for="s in sections" :key="s.title" v-reveal class="doc__sec">
       <h2>{{ s.title }}</h2>
       <p v-for="(p, i) in s.text" :key="i">{{ fill(p) }}</p>

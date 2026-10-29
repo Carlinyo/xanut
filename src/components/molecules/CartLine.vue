@@ -2,6 +2,7 @@
 import ProductArt from '../atoms/ProductArt.vue'
 import QuantityStepper from './QuantityStepper.vue'
 import { money } from '../../utils/format'
+import { MAX_QTY } from '../../stores/cart'
 import type { CartItem } from '../../types'
 
 defineProps<{ item: CartItem }>()
@@ -10,13 +11,13 @@ defineEmits<{ change: [delta: number] }>()
 
 <template>
   <li class="line">
-    <span class="line__art"><ProductArt :kind="item.art" :alt="item.name" /></span>
+    <span class="line__art"><ProductArt :kind="item.art" :src="item.image" :alt="item.name" /></span>
     <div class="line__body">
       <b>{{ item.name }}</b>
       <small v-if="item.note">{{ item.note }}</small>
       <em>{{ money(item.price) }}</em>
     </div>
-    <QuantityStepper :value="item.qty" @change="$emit('change', $event)" />
+    <QuantityStepper :value="item.qty" :max="MAX_QTY" @change="$emit('change', $event)" />
   </li>
 </template>
 

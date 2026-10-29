@@ -3,11 +3,14 @@
 // Запуск (нужны playwright и sharp): node tools/render-art.mjs   → public/img/art/*.webp
 import { createRequire } from 'node:module'
 import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
 const sharp = require('sharp')
 
-const OUT = new URL('../public/img/art/', import.meta.url).pathname
+// fileURLToPath, а не URL.pathname: на Windows pathname даёт «/C:/…», а пробелы в пути — «%20»
+const OUT = fileURLToPath(new URL('../public/img/art/', import.meta.url))
 const PREVIEW = process.env.ART_PREVIEW_DIR // если задано, сюда кладутся PNG для просмотра
 mkdirSync(OUT, { recursive: true })
 
@@ -253,16 +256,19 @@ ${peppercorns([[150, 630], [178, 646, 8], [640, 640], [668, 628, 8]])}`,
 
 const only = process.argv.slice(2)
 const browser = await chromium.launch()
-// deviceScaleFactor 2: рендер 1600×1600 и уменьшение до 800 — сглаживание и чёткая фактура
-const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 2 })
-for (const [name, inner] of Object.entries(scenes)) {
-  if (only.length && !only.includes(name)) continue
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800"><defs>${defs}</defs>${inner}</svg>`
-  await page.setContent(`<body style="margin:0;background:transparent">${svg}</body>`)
-  const png = await page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: 800, height: 800 } })
-  const img = sharp(png).resize(800, 800, { kernel: 'lanczos3' })
-  await img.clone().webp({ quality: 86, alphaQuality: 92, effort: 5 }).toFile(`${OUT}${name}.webp`)
-  if (PREVIEW) await img.clone().png().toFile(`${PREVIEW}/art-${name}.png`)
-  console.log('ok', name)
+try { // при ошибке рендера браузер всё равно закрывается, иначе процесс node не завершится
+  // deviceScaleFactor 2: рендер 1600×1600 и уменьшение до 800 — сглаживание и чёткая фактура
+  const page = await browser.newPage({ viewport: { width: 800, height: 800 }, deviceScaleFactor: 2 })
+  for (const [name, inner] of Object.entries(scenes)) {
+    if (only.length && !only.includes(name)) continue
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="800" height="800"><defs>${defs}</defs>${inner}</svg>`
+    await page.setContent(`<body style="margin:0;background:transparent">${svg}</body>`)
+    const png = await page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: 800, height: 800 } })
+    const img = sharp(png).resize(800, 800, { kernel: 'lanczos3' })
+    await img.clone().webp({ quality: 86, alphaQuality: 92, effort: 5 }).toFile(join(OUT, `${name}.webp`))
+    if (PREVIEW) await img.clone().png().toFile(join(PREVIEW, `art-${name}.png`))
+    console.log('ok', name)
+  }
+} finally {
+  await browser.close()
 }
-await browser.close()

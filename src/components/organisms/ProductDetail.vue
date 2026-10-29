@@ -13,10 +13,11 @@ import type { Product } from '../../types'
 const props = defineProps<{ product: Product }>()
 const cart = useCart()
 const added = ref(false)
+const imgBox = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined
 function add() {
   cart.add(props.product)
-  flyToCart(document.querySelector<HTMLElement>('.pdp__img img'))
+  flyToCart(imgBox.value?.querySelector('img') ?? null)
   added.value = true
   clearTimeout(timer)
   timer = setTimeout(() => (added.value = false), 1300)
@@ -26,7 +27,7 @@ onUnmounted(() => clearTimeout(timer))
 
 <template>
   <div class="pdp">
-    <div class="pdp__img">
+    <div ref="imgBox" class="pdp__img">
       <AppBadge v-if="product.discount" class="pdp__badge">-{{ product.discount }}%</AppBadge>
       <ProductArt :kind="product.art" :src="product.image" :alt="product.name" />
     </div>

@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../../i18n'
-import { ApiError } from '../../api'
+import { ApiError, commonErrorKey } from '../../api'
 import { useAuth } from '../../stores/auth'
 import { useCatalog } from '../../stores/catalog'
 import type { Channel, OtpChallenge } from '../../types'
@@ -71,9 +71,10 @@ function applySuggestion() {
   check('email')
 }
 
+// только путь внутри сайта: «//evil.com» и «/\evil.com» браузер считает ссылкой на чужой домен
 const redirect = computed(() => {
   const r = String(route.query.redirect || '')
-  return r.startsWith('/') && !r.startsWith('//') ? r : '/'
+  return /^\/(?![/\\])/.test(r) ? r : '/'
 })
 
 async function submit() {
@@ -102,7 +103,7 @@ async function submit() {
       code === 'INVALID' ? t('auth.invalid')
         : code === 'OTP_RATE_LIMIT' ? t('otp.tooMany')
         : code === 'OTP_SEND_FAILED' ? t('otp.sendFailed')
-        : t('errors.generic')
+        : t(commonErrorKey(e))
   } finally { busy.value = false }
 }
 function onVerified() {
@@ -118,7 +119,7 @@ function onVerified() {
   </div>
   <form v-else class="auth" novalidate @submit.prevent="submit">
     <h1>{{ isReg ? $t('auth.register') : $t('auth.login') }}</h1>
-    <FormField v-if="isReg" v-model="form.name" :label="$t('auth.name')" :error="errors.name" autocomplete="name" @blur="onBlur('name')" />
+    <FormField v-if="isReg" v-model="form.name" :label="$t('auth.name')" :error="errors.name" autocomplete="name" maxlength="80" @blur="onBlur('name')" />
     <PhoneField v-if="isReg" v-model="form.phone" :label="$t('auth.phone')" :error="errors.phone" :valid="phoneOk" @blur="onBlur('phone')" />
     <FormField
       v-model="form.email" type="email" :label="$t('auth.email')" :error="errors.email" autocomplete="email"

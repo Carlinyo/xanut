@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { t } from '../../i18n'
-import { ApiError } from '../../api'
+import { ApiError, commonErrorKey } from '../../api'
 import { useCart } from '../../stores/cart'
 import { useAuth } from '../../stores/auth'
-import { phoneServerError, rules } from '../../validators'
+import { useCatalog } from '../../stores/catalog'
+import { rules, serverFieldErrors } from '../../validators'
 import { checkPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
@@ -16,7 +17,7 @@ import PrivacyNote from '../molecules/PrivacyNote.vue'
 import AppButton from '../atoms/AppButton.vue'
 
 const emit = defineEmits<{ done: [] }>()
-const cart = useCart(), auth = useAuth()
+const cart = useCart(), auth = useAuth(), catalog = useCatalog()
 const form = reactive({ name: auth.user?.name || '', phone: auth.user?.phone || '', address: '', slot: '', payment: 'cash' as 'cash' | 'card' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
 const phoneOk = computed(() => checkPhone(form.phone).ok)
@@ -25,7 +26,11 @@ function checkPhoneField() { // проверка, когда покупател�
   const r = rules.phone(form.phone)
   errors.phone = r === true ? '' : r
 }
-watch(() => form.phone, () => { if (errors.phone && phoneOk.value) errors.phone = '' }) // ошибка исчезает, как только номер стал верным
+// ошибка поля исчезает, как только значение исправили
+watch(() => form.phone, () => { if (errors.phone && phoneOk.value) errors.phone = '' })
+watch(() => form.name, () => { if (errors.name && rules.name(form.name) === true) errors.name = '' })
+watch(() => form.address, () => { errors.address = '' }) // прежний результат проверки относится к старому тексту
+watch(() => form.slot, (v) => { if (v) errors.slot = '' })
 const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSlots } = useSlots()
 const { state: addrState, formatted: addrFormatted, check: checkAddr } = useAddressCheck(() => form.address)
 
@@ -43,21 +48,44 @@ function validate(): boolean {
   errors.slot = form.slot ? '' : t('errors.slot')
   return !errors.name && !errors.phone && !errors.address && !errors.slot
 }
-function applyAddress(ok: boolean) {
+/** null — адрес изменили во время проверки: новый текст проверится при уходе из поля или отправке. */
+function applyAddress(ok: boolean | null) {
+  if (ok === null) return
   errors.address = ok ? '' : addrState.value === 'unavailable' ? t('errors.addressUnavailable') : t('errors.addressInvalid')
 }
 async function verifyAddress() { // проверка, когда пользователь закончил вводить адрес
-  if (rules.address(form.address) === true) applyAddress(await checkAddr())
+  if (rules.address(form.address) !== true) return
+  try { applyAddress(await checkAddr()) } catch (e) { await fail(e) }
 }
-function fail(e: unknown) {
-  const code = e instanceof ApiError ? e.code : ''
-  if (e instanceof ApiError && e.status === 401) { auth.user = null; errors.form = t('cart.needLogin') } // сессия истекла
-  else if (code === 'SLOT_FULL') { errors.slot = t('errors.slotFull'); form.slot = ''; loadSlots() } // окно заняли, пока клиент оформлял
-  else if (code === 'INVALID_SLOT') { errors.slot = t('errors.slotInvalid'); form.slot = ''; loadSlots() }
-  else if (code === 'VALIDATION' && phoneServerError(e instanceof ApiError ? e.issues : undefined)) errors.phone = phoneServerError((e as ApiError).issues)
-  else if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
+async function fail(e: unknown) {
+  const err = e instanceof ApiError ? e : null
+  const code = err?.code ?? ''
+  if (err?.status === 401) { errors.form = t('cart.needLogin'); auth.user = null; return } // сессия истекла: корзина предложит войти
+  if (code === 'SLOT_FULL' || code === 'INVALID_SLOT') { // окно заняли или оно прошло, пока клиент оформлял
+    errors.slot = t(code === 'SLOT_FULL' ? 'errors.slotFull' : 'errors.slotInvalid')
+    form.slot = ''
+    void loadSlots()
+    return
+  }
+  if (code === 'INVALID_PRODUCT' || code === 'NOT_ORDERABLE' || code === 'INVALID_KEBAB') {
+    // корзина устарела (товар скрыли, меню шашлыка изменилось): обновляем каталог и убираем недоступное
+    await catalog.load(true)
+    cart.sync()
+    errors.form = t('cart.changed')
+    return
+  }
+  if (code === 'VALIDATION') {
+    const fe = serverFieldErrors(err?.issues)
+    if (fe.name || fe.phone || fe.address) {
+      if (fe.name) errors.name = fe.name
+      if (fe.phone) errors.phone = fe.phone
+      if (fe.address) errors.address = fe.address
+      return
+    }
+  }
+  if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
   else if (code === 'ADDRESS_UNAVAILABLE') errors.address = t('errors.addressUnavailable')
-  else errors.form = t('errors.generic')
+  else errors.form = t(commonErrorKey(e))
 }
 async function submit() {
   if (busy.value) return
@@ -71,18 +99,18 @@ async function submit() {
     await cart.checkout({ ...form }, requestId)
     emit('done')
   } catch (e) {
-    fail(e)
+    await fail(e)
   } finally { busy.value = false }
 }
 </script>
 
 <template>
   <form class="co" novalidate @submit.prevent="submit">
-    <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" />
+    <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" maxlength="80" />
     <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t('checkout.phoneHint')" @blur="checkPhoneField" />
     <FormField
       v-model="form.address" :label="$t('checkout.address')" :error="errors.address" :hint="addrState === 'ok' ? addrFormatted : ''"
-      :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" @blur="verifyAddress"
+      :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" maxlength="200" @blur="verifyAddress"
     />
     <small v-if="addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
     <SlotPicker

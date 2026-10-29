@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { t } from '../../i18n'
-import { api } from '../../api'
+import { api, ApiError, commonErrorKey } from '../../api'
 import { uuid } from '../../utils/id'
-import { rules } from '../../validators'
+import { rules, serverFieldErrors } from '../../validators'
 import InfoPanel from '../molecules/InfoPanel.vue'
 import FormField from '../molecules/FormField.vue'
 import AppButton from '../atoms/AppButton.vue'
@@ -16,6 +16,8 @@ const busy = ref(false)
 // один ключ на одно и то же сообщение: повторная отправка того же текста не создаст дубль
 let requestId = uuid()
 watch(form, () => { requestId = uuid() })
+// ошибка поля исчезает, как только его начали исправлять
+for (const k of ['name', 'phone', 'message'] as const) watch(() => form[k], () => { errors[k] = '' })
 
 async function send() {
   if (busy.value) return // защита от двойного клика и Enter
@@ -27,8 +29,10 @@ async function send() {
   try {
     await api('/contact', { method: 'POST', body: { ...form, requestId } })
     sent.value = true
-  } catch {
-    errors.form = t('errors.generic')
+  } catch (e) {
+    const fe = e instanceof ApiError && e.code === 'VALIDATION' ? serverFieldErrors(e.issues) : {}
+    if (fe.name || fe.phone || fe.message) Object.assign(errors, { name: fe.name ?? '', phone: fe.phone ?? '', message: fe.message ?? '' })
+    else errors.form = t(commonErrorKey(e))
   } finally { busy.value = false }
 }
 </script>
@@ -37,9 +41,9 @@ async function send() {
   <InfoPanel>
     <p v-if="sent" class="ok">{{ $t('contact.thanks') }}</p>
     <form v-else class="cf" novalidate @submit.prevent="send">
-      <FormField v-model="form.name" :label="$t('contact.name')" :error="errors.name" autocomplete="name" />
-      <FormField v-model="form.phone" type="tel" :label="$t('contact.phoneLabel')" :error="errors.phone" autocomplete="tel" />
-      <FormField v-model="form.message" as="textarea" rows="4" :label="$t('contact.message')" :error="errors.message" />
+      <FormField v-model="form.name" :label="$t('contact.name')" :error="errors.name" autocomplete="name" maxlength="80" />
+      <FormField v-model="form.phone" type="tel" :label="$t('contact.phoneLabel')" :error="errors.phone" autocomplete="tel" maxlength="20" />
+      <FormField v-model="form.message" as="textarea" rows="4" :label="$t('contact.message')" :error="errors.message" maxlength="2000" />
       <p v-if="errors.form" class="err" role="alert">{{ errors.form }}</p>
       <PrivacyNote />
       <AppButton type="submit" :disabled="busy">{{ busy ? $t('common.sending') : $t('contact.send') }}</AppButton>

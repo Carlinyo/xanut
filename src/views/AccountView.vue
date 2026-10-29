@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { useAuth } from '../stores/auth'
 import type { Order } from '../types'
 import { formatPhone } from '../utils/phone'
@@ -17,7 +17,14 @@ const failed = ref(false)
 
 onMounted(async () => {
   try { orders.value = await api<Order[]>('/orders') }
-  catch { failed.value = true }
+  catch (e) {
+    if (e instanceof ApiError && e.status === 401) { // сессия истекла на сервере — войти заново и вернуться сюда
+      auth.user = null
+      router.replace({ path: '/login', query: { redirect: '/account' } })
+      return
+    }
+    failed.value = true
+  }
   finally { loading.value = false }
 })
 function logout() { auth.logout(); router.push('/') }

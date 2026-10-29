@@ -1,0 +1,17 @@
+# зависимости ставятся через npm install, сборка — npm run build
+node_modules/
+dist/
+
+# локальные настройки и секреты (VITE_API_URL и т.п.)
+.env
+.env.*
+!.env.example
+*.local
+
+# логи и мусор редакторов/ОС
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/

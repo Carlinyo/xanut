@@ -29,7 +29,7 @@ function onInput(e: Event) {
     <span class="pf__box" :class="{ 'is-invalid': !!error, 'is-valid': valid && !error }">
       <span class="pf__cc" aria-hidden="true">+374</span>
       <input
-        type="tel" inputmode="tel" autocomplete="tel" placeholder="91 123 456" maxlength="16"
+        type="tel" inputmode="tel" autocomplete="tel" placeholder="91 123 456" maxlength="32"
         :value="display" :aria-invalid="!!error || undefined" :aria-label="`${label} (+374)`"
         @input="onInput" @blur="emit('blur')"
       />

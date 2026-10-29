@@ -24,7 +24,7 @@ export function passwordError(pw: string, ctx: PasswordContext): string {
   return passwordProblems(pw, ctx).length ? t('password.notMet') : ''
 }
 
-type FieldName = 'name' | 'email' | 'phone' | 'password' | 'consent'
+type FieldName = 'name' | 'email' | 'phone' | 'password' | 'consent' | 'address' | 'message'
 const EMAIL_ERROR_KEY: Record<string, string> = { FORMAT: 'errors.email', DISPOSABLE: 'errors.emailDisposable', DOMAIN: 'errors.emailDomain' }
 
 /** Ошибки сервера (400 VALIDATION, issues с полем) → тексты под нужными полями формы. */
@@ -36,9 +36,8 @@ export function serverFieldErrors(issues?: { path: string; message: string }[]):
     else if (path === 'password') out.password = t(message === 'PASSWORD_PWNED' ? 'password.rule.PWNED' : 'password.notMet')
     else if (path === 'name') out.name = t('errors.name')
     else if (path === 'consent') out.consent = t('errors.consent')
+    else if (path === 'address') out.address = t('errors.address')
+    else if (path === 'message') out.message = t('errors.message')
   }
   return out
 }
-
-/** Текст ошибки телефона из ответа сервера (для формы заказа). */
-export const phoneServerError = (issues?: { path: string; message: string }[]): string => serverFieldErrors(issues).phone ?? ''

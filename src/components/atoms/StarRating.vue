@@ -1,10 +1,13 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ value?: number; count?: number }>(), { value: 5 })
+import { computed } from 'vue'
+const props = withDefaults(defineProps<{ value?: number; count?: number }>(), { value: 5 })
+// рейтинг из базы может быть дробным или вне 0–5: repeat() с отрицательным числом бросает ошибку и ломает страницу
+const full = computed(() => Math.min(5, Math.max(0, Math.round(Number(props.value) || 0))))
 </script>
 
 <template>
-  <p class="stars" :aria-label="`${value} / 5`">
-    <span aria-hidden="true">{{ '★'.repeat(value) }}{{ '☆'.repeat(5 - value) }}</span>
+  <p class="stars" :aria-label="`${full} / 5`">
+    <span aria-hidden="true">{{ '★'.repeat(full) }}{{ '☆'.repeat(5 - full) }}</span>
     <small v-if="count">({{ count }})</small>
   </p>
 </template>

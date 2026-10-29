@@ -3,12 +3,15 @@
 // Запуск (нужны playwright и sharp): node tools/render-backgrounds.mjs [hero coals paper decor]  → public/img/bg/*.webp
 import { createRequire } from 'node:module'
 import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { band, blob, blurFilter, dropShadow, grad, linear, material, rng } from './art-kit.mjs'
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
 const sharp = require('sharp')
 
-const OUT = new URL('../public/img/bg/', import.meta.url).pathname
+// fileURLToPath, а не URL.pathname: на Windows pathname даёт «/C:/…», а пробелы в пути — «%20»
+const OUT = fileURLToPath(new URL('../public/img/bg/', import.meta.url))
 const PREVIEW = process.env.ART_PREVIEW_DIR
 mkdirSync(OUT, { recursive: true })
 
@@ -269,19 +272,22 @@ ${salt}` }
 const scenes = { hero, coals, paper, decor }
 const only = process.argv.slice(2)
 const browser = await chromium.launch()
-for (const [name, make] of Object.entries(scenes)) {
-  if (only.length && !only.includes(name)) continue
-  const t0 = Date.now()
-  const { W, H, defs, body, transparent, opaque } = make()
-  const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: name === 'decor' ? 2 : 1 })
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${defs}</defs>${body}</svg>`
-  await page.setContent(`<body style="margin:0;background:transparent">${svg}</body>`)
-  const png = await page.screenshot({ omitBackground: !!transparent, clip: { x: 0, y: 0, width: W, height: H } })
-  await page.close()
-  let img = sharp(png)
-  if (name === 'decor') img = img.resize(W, H, { kernel: 'lanczos3' })
-  await img.clone().webp(opaque ? { quality: 82 } : transparent ? { quality: 84, alphaQuality: 90 } : { quality: 80 }).toFile(`${OUT}${name}.webp`)
-  if (PREVIEW) await img.clone().png().toFile(`${PREVIEW}/bg-${name}.png`)
-  console.log('ok', name, `${((Date.now() - t0) / 1000).toFixed(1)}s`)
+try { // при ошибке рендера браузер всё равно закрывается, иначе процесс node не завершится
+  for (const [name, make] of Object.entries(scenes)) {
+    if (only.length && !only.includes(name)) continue
+    const t0 = Date.now()
+    const { W, H, defs, body, transparent, opaque } = make()
+    const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: name === 'decor' ? 2 : 1 })
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><defs>${defs}</defs>${body}</svg>`
+    await page.setContent(`<body style="margin:0;background:transparent">${svg}</body>`)
+    const png = await page.screenshot({ omitBackground: !!transparent, clip: { x: 0, y: 0, width: W, height: H } })
+    await page.close()
+    let img = sharp(png)
+    if (name === 'decor') img = img.resize(W, H, { kernel: 'lanczos3' })
+    await img.clone().webp(opaque ? { quality: 82 } : transparent ? { quality: 84, alphaQuality: 90 } : { quality: 80 }).toFile(join(OUT, `${name}.webp`))
+    if (PREVIEW) await img.clone().png().toFile(join(PREVIEW, `bg-${name}.png`))
+    console.log('ok', name, `${((Date.now() - t0) / 1000).toFixed(1)}s`)
+  }
+} finally {
+  await browser.close()
 }
-await browser.close()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
 import { t } from '../../i18n'
-import { ApiError } from '../../api'
+import { ApiError, commonErrorKey } from '../../api'
 import { useAuth } from '../../stores/auth'
 import type { OtpChallenge } from '../../types'
 import OtpInput from '../molecules/OtpInput.vue'
@@ -48,13 +48,17 @@ async function submit() {
     if (c === 'OTP_INVALID') error.value = t('otp.invalid')
     else if (c === 'OTP_EXPIRED' || c === 'OTP_LOCKED') { expired.value = true; error.value = t(c === 'OTP_LOCKED' ? 'otp.locked' : 'otp.expired') }
     else if (c === 'EXISTS') error.value = t('auth.exists')
-    else error.value = t('errors.generic')
+    else if (c === 'PHONE_EXISTS') error.value = t('auth.phoneExists')
+    else error.value = t(commonErrorKey(e))
   } finally { busy.value = false }
 }
 
+const resending = ref(false) // двойной клик не должен отправлять код дважды
 async function resend() {
+  if (resending.value || wait.value > 0) return
   error.value = ''
   info.value = ''
+  resending.value = true
   try {
     const r = await auth.resend(props.challenge.challengeId)
     devCode.value = r.devCode ?? ''
@@ -64,8 +68,13 @@ async function resend() {
   } catch (e) {
     const c = e instanceof ApiError ? e.code : ''
     if (c === 'OTP_EXPIRED') { expired.value = true; error.value = t('otp.expired') }
-    else error.value = t(c === 'OTP_RESEND_LIMIT' || c === 'OTP_RATE_LIMIT' ? 'otp.tooMany' : c === 'OTP_COOLDOWN' ? 'otp.wait' : 'errors.generic')
-  }
+    else if (c === 'OTP_COOLDOWN') {
+      error.value = t('otp.wait')
+      const retryIn = Number((e as ApiError).details.retryIn)
+      if (retryIn > 0) startTimer(retryIn) // сервер сказал, сколько ждать — показываем обратный отсчёт
+    }
+    else error.value = t(c === 'OTP_RESEND_LIMIT' || c === 'OTP_RATE_LIMIT' ? 'otp.tooMany' : commonErrorKey(e))
+  } finally { resending.value = false }
 }
 </script>
 
@@ -91,7 +100,7 @@ async function resend() {
     <AppButton v-else size="lg" block @click="emit('back')">{{ $t('otp.restart') }}</AppButton>
 
     <div v-if="!expired" class="otp-step__links">
-      <button type="button" class="otp-step__link" :disabled="wait > 0" @click="resend">
+      <button type="button" class="otp-step__link" :disabled="wait > 0 || resending" @click="resend">
         {{ wait > 0 ? $t('otp.resendIn', { sec: wait }) : $t('otp.resend') }}
       </button>
       <button type="button" class="otp-step__link" @click="emit('back')">{{ purpose === 'register' ? $t('otp.changeData') : $t('otp.back') }}</button>

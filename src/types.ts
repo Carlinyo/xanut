@@ -14,7 +14,7 @@ export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otp
 
 export interface CartItem {
   id: number | string; kind: 'product' | 'kebab'; productId?: number; kebab?: KebabSelection
-  name: string; price: number; art: string; note: string; qty: number
+  name: string; price: number; art: string; image?: string; note: string; qty: number
 }
 export type Channel = 'email' | 'phone'
 export interface PublicUser {

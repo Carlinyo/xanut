@@ -14,7 +14,9 @@ function set(value: string) {
 }
 function onInput(i: number, e: Event) {
   const el = e.target as HTMLInputElement
-  const digits = el.value.replace(/\D/g, '')
+  const typed = (e as InputEvent).data
+  // одна цифра поверх заполненной ячейки заменяет её (иначе в ячейке «35» и код сдвигается)
+  const digits = typed && /^\d$/.test(typed) ? typed : el.value.replace(/\D/g, '')
   el.value = props.modelValue[i] ?? ''
   if (!digits) return
   // при автозаполнении из SMS или вставке в одну ячейку приходит сразу несколько цифр
@@ -36,18 +38,18 @@ onMounted(() => cells.value[0]?.focus())
 </script>
 
 <template>
-  <div class="otp" :class="{ 'is-invalid': invalid }" role="group" :aria-label="label">
+  <div class="otp" :class="{ 'is-invalid': invalid }" :style="{ '--n': length }" role="group" :aria-label="label">
     <input
       v-for="i in length" :key="i" :ref="(el) => (cells[i - 1] = el as HTMLInputElement)"
       class="otp__cell" :class="{ filled: !!modelValue[i - 1] }" :value="modelValue[i - 1] ?? ''" :disabled="disabled"
-      inputmode="numeric" pattern="[0-9]*" maxlength="6" :autocomplete="i === 1 ? 'one-time-code' : 'off'"
+      inputmode="numeric" pattern="[0-9]*" :maxlength="length" :autocomplete="i === 1 ? 'one-time-code' : 'off'"
       :aria-label="`${label} ${i}`" @input="onInput(i - 1, $event)" @keydown="onKey(i - 1, $event)" @paste="onPaste" @focus="($event.target as HTMLInputElement).select()"
     />
   </div>
 </template>
 
 <style scoped>
-.otp { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:clamp(6px, 2vw, 10px); }
+.otp { display:grid; grid-template-columns:repeat(var(--n, 6), minmax(0, 1fr)); gap:clamp(6px, 2vw, 10px); }
 .otp__cell { width:100%; aspect-ratio:1 / 1.15; max-height:64px; padding:0; border:1.5px solid var(--line); border-radius:var(--r-md); background:#fff; font:800 clamp(20px, 5vw, 26px) / 1 var(--font); text-align:center; color:var(--ink); transition:border-color .2s, box-shadow .2s, transform .2s var(--ease); }
 .otp__cell:focus { outline:none; border-color:var(--yellow); box-shadow:0 0 0 4px rgb(246 178 26 / .22); transform:translateY(-2px); }
 .otp__cell.filled { border-color:var(--yellow-lo); background:var(--cream); }

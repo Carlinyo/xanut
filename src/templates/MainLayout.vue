@@ -14,7 +14,8 @@ import BackToTop from '../components/molecules/BackToTop.vue'
 
 const cart = useCart(), ui = useUI(), catalog = useCatalog()
 catalog.load()
-watch(() => catalog.ready, (ready) => ready && cart.prune(new Set(catalog.products.filter((p) => p.orderable).map((p) => p.id))), { immediate: true })
+// корзина из браузера могла устареть: убрать недоступное и обновить цены, как только пришёл каталог
+watch(() => catalog.ready, (ready) => { if (ready) cart.sync() }, { immediate: true })
 </script>
 
 <template>

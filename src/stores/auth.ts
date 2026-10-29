@@ -12,9 +12,10 @@ export const useAuth = defineStore('auth', {
   state: () => ({ user: null as PublicUser | null }),
   getters: { isAuth: (s): boolean => s.user !== null },
   actions: {
-    /** Восстанавливает сессию при старте. Нет сессии или нет связи — остаёмся гостем. */
+    /** Восстанавливает сессию при старте. Нет сессии или нет связи — остаёмся гостем.
+     *  Короткий таймаут: до ответа сайт не показывается, зависший сервер не должен держать белый экран. */
     async fetchMe() {
-      try { this.user = await api<PublicUser>('/auth/me') } catch { this.user = null }
+      try { this.user = await api<PublicUser>('/auth/me', { timeout: 5000 }) } catch { this.user = null }
     },
     /** Шаг 1 регистрации: сервер проверяет данные и отправляет код. Аккаунт появится только после verify(). */
     async register(data: RegisterData): Promise<OtpChallenge> {
