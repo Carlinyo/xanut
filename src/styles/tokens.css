@@ -1,0 +1,14 @@
+:root {
+  --font:'Noto Sans Armenian', system-ui, sans-serif;
+  --ink:#14201e; --muted:#6b706a; --line:#e6dfd3; --bg:#f3eee5; --surface:#faf6ee;
+  --dark:#0e1a19; --dark-2:#182927; --dark-3:#223735;
+  --yellow:#f6b21a; --yellow-hi:#ffc83d; --yellow-lo:#d99700; --cream:#fff7e0;
+  --red:#e5342b; --green:#1a7f37;
+  --r-sm:8px; --r-md:14px; --r-lg:22px; --pill:999px;
+  --shadow-sm:0 2px 8px -2px rgb(14 26 25 / .14);
+  --shadow-md:0 18px 34px -16px rgb(14 26 25 / .42);
+  --ease:cubic-bezier(.22,1,.36,1); --t:.3s;
+  --wrap:1240px; --gutter:clamp(12px,3vw,24px);
+}
+@media (min-width:1600px) { :root { --wrap:1440px; } }
+@media (min-width:2200px) { :root { --wrap:1800px; } }

@@ -1,0 +1,68 @@
+*, *::before, *::after { box-sizing:border-box; }
+html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+/* «липкий» футер: при коротком содержимом футер всё равно прижат к низу окна */
+#app { display:flex; flex-direction:column; min-height:100vh; min-height:100dvh; }
+#app > main { flex:1 0 auto; }
+body { margin:0; font-family:var(--font); color:var(--ink); background:var(--surface) url(/img/bg/paper.webp) repeat; line-height:1.5; -webkit-font-smoothing:antialiased; overflow-x:clip; }
+@media (min-width:2200px) { body { font-size:18px; } }
+a { color:inherit; text-decoration:none; }
+button { font:inherit; cursor:pointer; }
+img, svg { max-width:100%; }
+::selection { background:var(--yellow); color:#000; }
+:focus-visible { outline:3px solid var(--yellow); outline-offset:2px; }
+h1, h2, h3 { line-height:1.2; letter-spacing:-.01em; }
+.wrap { max-width:var(--wrap); margin-inline:auto; padding-inline:var(--gutter); }
+.page { padding-block:clamp(16px,3vw,32px); }
+.page h1 { font-size:clamp(24px,3vw,32px); margin:0 0 16px; }
+.section { margin-top:clamp(32px,5vw,56px); }
+.duo { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.duo > * { min-width:0; }
+.muted { color:var(--muted); font-size:14px; }
+/* секция с декором (травы и специи по краю): декор лежит под содержимым, но над фоном страницы */
+.has-decor { position:relative; isolation:isolate; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+@media (max-width:800px) { .duo { grid-template-columns:1fr; } }
+
+/* ===================== анимации ===================== */
+@keyframes rise { from { opacity:0; transform:translateY(22px); } }
+@keyframes float { 50% { transform:translateY(-12px) rotate(1.5deg); } }
+@keyframes bump { 40% { transform:scale(1.4); } }
+@keyframes shimmer { to { background-position:200% center; } }
+
+/* появление при прокрутке: v-reveal="'up' | 'down' | 'left' | 'right' | 'zoom' | 'blur' | 'flip'"
+   Ключевые кадры (а не transition), чтобы не конфликтовать с собственными переходами компонентов
+   и не задерживать эффекты наведения после появления. */
+@keyframes rv-up { from { opacity:0; transform:translateY(38px); } }
+@keyframes rv-down { from { opacity:0; transform:translateY(-30px); } }
+@keyframes rv-left { from { opacity:0; transform:translateX(-56px); } }
+@keyframes rv-right { from { opacity:0; transform:translateX(56px); } }
+@keyframes rv-zoom { from { opacity:0; transform:scale(.86) translateY(22px); } }
+@keyframes rv-blur { from { opacity:0; transform:translateY(16px); filter:blur(12px); } }
+@keyframes rv-flip { from { opacity:0; transform:perspective(900px) rotateX(22deg) translateY(30px); } }
+.reveal:not(.in), .stagger:not(.in) > * { opacity:0; }
+.reveal.in, .stagger.in > * { animation:rv-up .95s cubic-bezier(.16,1,.3,1) backwards; }
+.stagger.in > * { animation-delay:calc(var(--i, 0) * 80ms); }
+[data-reveal="down"].reveal.in, [data-reveal="down"].stagger.in > * { animation-name:rv-down; }
+[data-reveal="left"].reveal.in, [data-reveal="left"].stagger.in > * { animation-name:rv-left; }
+[data-reveal="right"].reveal.in, [data-reveal="right"].stagger.in > * { animation-name:rv-right; }
+[data-reveal="zoom"].reveal.in, [data-reveal="zoom"].stagger.in > * { animation-name:rv-zoom; }
+[data-reveal="blur"].reveal.in, [data-reveal="blur"].stagger.in > * { animation-name:rv-blur; }
+[data-reveal="flip"].reveal.in, [data-reveal="flip"].stagger.in > * { animation-name:rv-flip; transform-origin:50% 100%; }
+
+/* параллакс: v-parallax="0.2" выставляет --py */
+.parallax { transform:translate3d(0, var(--py, 0px), 0); will-change:transform; }
+
+/* 3D-наклон за курсором: v-tilt */
+.tilt { transform-style:preserve-3d; }
+
+/* смена страниц */
+.page-enter-active { transition:opacity .45s var(--ease), transform .45s var(--ease), filter .45s var(--ease); }
+.page-leave-active { transition:opacity .2s ease, filter .2s ease; }
+.page-enter-from { opacity:0; transform:translateY(18px); filter:blur(6px); }
+.page-leave-to { opacity:0; filter:blur(4px); }
+
+@media (prefers-reduced-motion:reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+  .reveal, .stagger > * { opacity:1 !important; }
+  .parallax { transform:none !important; }
+}
