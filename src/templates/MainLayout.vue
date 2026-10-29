@@ -3,6 +3,8 @@ import { watch } from 'vue'
 import { useCart } from '../stores/cart'
 import { useUI } from '../stores/ui'
 import { useCatalog } from '../stores/catalog'
+import { useAuth } from '../stores/auth'
+import { useBonus } from '../stores/bonus'
 import SiteHeader from '../components/organisms/SiteHeader.vue'
 import SiteFooter from '../components/organisms/SiteFooter.vue'
 import CartDrawer from '../components/organisms/CartDrawer.vue'
@@ -12,10 +14,12 @@ import LoadingState from '../components/molecules/LoadingState.vue'
 import ScrollProgress from '../components/atoms/ScrollProgress.vue'
 import BackToTop from '../components/molecules/BackToTop.vue'
 
-const cart = useCart(), ui = useUI(), catalog = useCatalog()
+const cart = useCart(), ui = useUI(), catalog = useCatalog(), auth = useAuth(), bonus = useBonus()
 catalog.load()
 // корзина из браузера могла устареть: убрать недоступное и обновить цены, как только пришёл каталог
 watch(() => catalog.ready, (ready) => { if (ready) cart.sync() }, { immediate: true })
+// баллы: подгружаем после входа, сбрасываем после выхода
+watch(() => auth.user?.id, (id) => (id ? bonus.load() : bonus.reset()), { immediate: true })
 </script>
 
 <template>

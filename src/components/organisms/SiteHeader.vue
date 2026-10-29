@@ -5,6 +5,7 @@ import { t } from '../../i18n'
 import { useCart } from '../../stores/cart'
 import { useUI } from '../../stores/ui'
 import { useAuth } from '../../stores/auth'
+import { useBonus } from '../../stores/bonus'
 import AppLogo from '../atoms/AppLogo.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppBadge from '../atoms/AppBadge.vue'
@@ -13,10 +14,10 @@ import AccountMenu from '../molecules/AccountMenu.vue'
 import NavLinks from '../molecules/NavLinks.vue'
 import type { NavItem } from '../../types'
 
-const cart = useCart(), ui = useUI(), auth = useAuth(), route = useRoute(), router = useRouter()
+const cart = useCart(), ui = useUI(), auth = useAuth(), bonus = useBonus(), route = useRoute(), router = useRouter()
 const items = computed<NavItem[]>(() => [
   { label: t('nav.home'), to: '/' }, { label: t('nav.products'), to: '/products' },
-  { label: t('nav.offers'), to: '/offers' }, { label: t('nav.about'), to: '/about' },
+  { label: t('nav.offers'), to: '/offers' }, { label: '🎁 ' + t('nav.bonus'), to: '/bonus' }, { label: t('nav.about'), to: '/about' },
   { label: t('nav.contact'), to: '/contact' }, { label: '🍢 ' + t('nav.kebab'), id: 'kebab' },
 ])
 function onQuery(v: string) {
@@ -36,7 +37,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
     <div class="wrap top__bar">
       <AppLogo class="top__logo" />
       <SearchBar class="top__search" :model-value="ui.query" @update:model-value="onQuery" />
-      <AccountMenu :user="auth.user" @logout="logout" />
+      <AccountMenu :user="auth.user" :points="bonus.loaded ? bonus.available : undefined" @logout="logout" />
       <AppButton variant="icon" data-cart-target :aria-label="$t('common.cart')" @click="ui.cartOpen = true">
         🛒<AppBadge v-if="cart.count" :key="cart.count" tone="count" class="top__count">{{ cart.count }}</AppBadge>
       </AppButton>

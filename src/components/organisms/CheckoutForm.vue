@@ -4,9 +4,10 @@ import { t } from '../../i18n'
 import { ApiError, commonErrorKey } from '../../api'
 import { useCart } from '../../stores/cart'
 import { useAuth } from '../../stores/auth'
+import { useBonus } from '../../stores/bonus'
 import { useCatalog } from '../../stores/catalog'
 import { rules, serverFieldErrors } from '../../validators'
-import { checkPhone } from '../../utils/phone'
+import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
@@ -15,11 +16,38 @@ import PhoneField from '../molecules/PhoneField.vue'
 import SlotPicker from '../molecules/SlotPicker.vue'
 import PrivacyNote from '../molecules/PrivacyNote.vue'
 import AppButton from '../atoms/AppButton.vue'
+import AppToggle from '../atoms/AppToggle.vue'
+import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 
 const emit = defineEmits<{ done: [] }>()
-const cart = useCart(), auth = useAuth(), catalog = useCatalog()
-const form = reactive({ name: auth.user?.name || '', phone: auth.user?.phone || '', address: '', slot: '', payment: 'cash' as 'cash' | 'card' })
+const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog()
+const form = reactive({ name: '', phone: '', address: '', slot: '', payment: 'cash' as 'cash' | 'card' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
+
+// «Мои данные» — имя, телефон и адрес из аккаунта (сохранены при регистрации и прошлых заказах); «Новые данные» — ввести другие
+type Who = 'saved' | 'new'
+const saved = computed(() => (auth.user?.name && checkPhone(auth.user.phone ?? '').ok ? auth.user : null))
+const who = ref<Who>(saved.value ? 'saved' : 'new')
+const saveProfile = ref(false)
+const whoOptions = computed(() => [
+  { value: 'saved' as Who, label: t('checkout.useSaved'), icon: '👤' },
+  { value: 'new' as Who, label: t('checkout.useNew'), icon: '✏️' },
+])
+const savedHasAddress = computed(() => !!saved.value?.address)
+const fixAddress = ref(false) // сохранённый адрес не прошёл проверку — показываем поле, чтобы поправить
+function fillWho() {
+  fixAddress.value = false
+  const u = saved.value
+  if (who.value === 'saved' && u) Object.assign(form, { name: u.name, phone: u.phone, address: u.address ?? '' })
+  else Object.assign(form, { name: '', phone: '', address: '' })
+  errors.name = errors.phone = errors.address = ''
+}
+fillWho()
+watch(who, fillWho)
+watch(saved, (u) => { if (!u) who.value = 'new' })
+// поля показываем, когда вводят новые данные; в «моих» — только адрес, если его ещё нет в аккаунте
+const showContact = computed(() => who.value === 'new')
+const showAddress = computed(() => who.value === 'new' || !savedHasAddress.value || fixAddress.value)
 const phoneOk = computed(() => checkPhone(form.phone).ok)
 function checkPhoneField() { // проверка, когда покупатель ушёл из поля
   if (!form.phone) return
@@ -52,6 +80,7 @@ function validate(): boolean {
 function applyAddress(ok: boolean | null) {
   if (ok === null) return
   errors.address = ok ? '' : addrState.value === 'unavailable' ? t('errors.addressUnavailable') : t('errors.addressInvalid')
+  if (!ok && !showAddress.value) fixAddress.value = true // сохранённый адрес больше не проходит проверку — даём его поправить
 }
 async function verifyAddress() { // проверка, когда пользователь закончил вводить адрес
   if (rules.address(form.address) !== true) return
@@ -85,18 +114,41 @@ async function fail(e: unknown) {
   }
   if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
   else if (code === 'ADDRESS_UNAVAILABLE') errors.address = t('errors.addressUnavailable')
+  else if (code === 'PHONE_EXISTS') errors.phone = t('auth.phoneExists') // «запомнить» номер, который уже у другого аккаунта
+  else if (code === 'BONUS_INSUFFICIENT') { // баллов меньше, чем думал сайт (например, заказ отменили) — показываем настоящий баланс
+    const available = Number(err?.details.available ?? 0)
+    bonus.available = available
+    errors.form = t('bonus.notEnough', { available: available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
+  }
+  else if (code === 'BONUS_NEEDS_PAID') errors.form = t('bonus.needsPaid')
+  else if (code === 'BONUS_QTY') errors.form = t('bonus.tooMany', { n: catalog.config.bonus?.maxQty ?? 10 })
+  else if (code === 'NOT_BONUS') { // товар перестал выдаваться за баллы, пока лежал в корзине: обновляем каталог и корзину
+    await catalog.load(true)
+    cart.sync()
+    errors.form = t('bonus.gone')
+  }
   else errors.form = t(commonErrorKey(e))
 }
 async function submit() {
   if (busy.value) return
   errors.form = ''
   if (!validate()) return
+  if (cart.pointsSpent && !cart.hasPaid) { errors.form = t('bonus.needsPaid'); return }
   busy.value = true
   try {
+    if (cart.pointsSpent) { // хватает ли баллов — по свежему балансу (окончательно проверит сервер)
+      await bonus.load()
+      if (cart.pointsSpent > bonus.available) {
+        errors.form = t('bonus.notEnough', { available: bonus.available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
+        return
+      }
+    }
     const ok = await checkAddr()
     applyAddress(ok)
     if (!ok) return
-    await cart.checkout({ ...form }, requestId)
+    const order = await cart.checkout({ ...form, saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value } /* «мои данные» с новым или исправленным адресом — запоминаем его */, requestId)
+    if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
+    void bonus.load() // списанные баллы и новые «ожидающие»
     emit('done')
   } catch (e) {
     await fail(e)
@@ -106,13 +158,26 @@ async function submit() {
 
 <template>
   <form class="co" novalidate @submit.prevent="submit">
-    <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" maxlength="80" />
-    <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t('checkout.phoneHint')" @blur="checkPhoneField" />
+    <ChoiceToggle v-if="saved" v-model="who" :options="whoOptions" :label="$t('checkout.whoLabel')" />
+    <div v-if="saved && who === 'saved'" class="co__saved">
+      <b>{{ saved.name }}</b>
+      <span>📞 {{ formatPhone(saved.phone) }}</span>
+      <span v-if="saved.address && !fixAddress">📍 {{ saved.address }}</span>
+      <small v-if="errors.name" class="co__fielderr" role="alert">{{ errors.name }}</small>
+      <small v-if="errors.phone" class="co__fielderr" role="alert">{{ errors.phone }}</small>
+      <small v-if="!saved.address" class="muted">{{ $t('checkout.savedNoAddress') }}</small>
+    </div>
+    <template v-if="showContact">
+      <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" maxlength="80" />
+      <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t('checkout.phoneHint')" @blur="checkPhoneField" />
+    </template>
     <FormField
+      v-if="showAddress"
       v-model="form.address" :label="$t('checkout.address')" :error="errors.address" :hint="addrState === 'ok' ? addrFormatted : ''"
       :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" maxlength="200" @blur="verifyAddress"
     />
     <small v-if="addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
+    <AppToggle v-if="saved && who === 'new'" v-model="saveProfile">{{ $t('checkout.saveProfile') }}</AppToggle>
     <SlotPicker
       v-model="form.slot" :label="$t('slots.title')" :days="slotData?.days ?? []" :today="slotData?.today ?? ''"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
@@ -130,5 +195,8 @@ async function submit() {
 <style scoped>
 .co { display:flex; flex-direction:column; gap:12px; margin-top:16px; }
 .co__err { margin:0; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:13px; }
+.co__saved { display:flex; flex-direction:column; gap:4px; padding:12px 14px; border:1.5px solid var(--yellow-lo); border-radius:var(--r-md); background:var(--cream); font-size:14px; overflow-wrap:anywhere; animation:rise .4s var(--ease) backwards; }
+.co__saved .muted { font-size:12px; }
+.co__fielderr { color:var(--red); font-size:12px; }
 .co__checking { margin-top:-6px; color:var(--muted); font-size:12px; }
 </style>

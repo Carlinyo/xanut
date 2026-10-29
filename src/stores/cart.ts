@@ -5,12 +5,19 @@ import { kebabPrice } from '../utils/kebab'
 import type { CartItem, KebabSelection, Order } from '../types'
 
 export interface Addable { id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection; orderable?: boolean }
-export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card' }
+/** Бонусный товар: берётся за баллы. */
+export interface BonusAddable { id: number; name: string; art?: string; image?: string; bonusPoints?: number }
+export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; saveProfile?: boolean }
 
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
 
-type OrderLine = { type: 'product'; productId: number; qty: number } | ({ type: 'kebab' } & KebabSelection)
+const bonusKey = (productId: number) => `bonus-${productId}`
+/** Одного бонусного товара в заказе — не больше (настройка сервера, приходит в /api/config). */
+const maxBonusQty = () => useCatalog().config.bonus?.maxQty ?? 10
+const maxQtyOf = (i: CartItem) => (i.kind === 'bonus' ? maxBonusQty() : MAX_QTY)
+
+type OrderLine = { type: 'product' | 'bonus'; productId: number; qty: number } | ({ type: 'kebab' } & KebabSelection)
 
 const STORAGE_KEY = 'cart'
 
@@ -20,6 +27,7 @@ function isItem(v: unknown): v is CartItem {
   if (!(typeof i.id === 'number' || typeof i.id === 'string') || typeof i.name !== 'string' || typeof i.price !== 'number') return false
   if (!Number.isInteger(i.qty) || (i.qty as number) < 1) return false
   if (i.kind === 'product') return typeof i.productId === 'number'
+  if (i.kind === 'bonus') return typeof i.productId === 'number' && typeof i.points === 'number'
   if (i.kind === 'kebab') return !!i.kebab && typeof i.kebab.meat === 'string' && typeof i.kebab.kg === 'number' && Array.isArray(i.kebab.extras)
   return false
 }
@@ -40,13 +48,20 @@ export const useCart = defineStore('cart', {
   state: () => ({ items: stored() }),
   getters: {
     count: (s): number => s.items.reduce((n, i) => n + i.qty, 0),
-    // price здесь — только для показа: сервер пересчитывает цены сам
+    // price здесь — только для показа: сервер пересчитывает цены сам (у бонусных товаров price = 0)
     subtotal: (s): number => s.items.reduce((n, i) => n + i.price * i.qty, 0),
     delivery(): number {
       const { deliveryFee, freeDeliveryFrom } = useCatalog().config
       return this.subtotal === 0 || this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
     },
     total(): number { return this.subtotal + this.delivery },
+    /** Сколько баллов уйдёт на бонусные товары в корзине. */
+    pointsSpent: (s): number => s.items.reduce((n, i) => n + (i.kind === 'bonus' ? (i.points ?? 0) * i.qty : 0), 0),
+    /** Сколько баллов принесёт заказ (2% от товаров, без доставки) — окончательно считает сервер. */
+    pointsEarned(): number { return Math.floor(this.subtotal * (useCatalog().config.bonus?.rate ?? 0.02)) },
+    /** Есть ли что-то оплачиваемое: бонусные товары едут только вместе с заказом. */
+    hasPaid: (s): boolean => s.items.some((i) => i.kind !== 'bonus'),
+    bonusQty: (s) => (productId: number): number => s.items.find((i) => i.id === bonusKey(productId))?.qty ?? 0,
   },
   actions: {
     save() {
@@ -62,24 +77,46 @@ export const useCart = defineStore('cart', {
       })
       this.save()
     },
+    /** Бонусный товар за баллы. false — больше этого товара взять нельзя. Хватает ли баллов, проверяет страница и сервер. */
+    addBonus(p: BonusAddable): boolean {
+      if (!p.bonusPoints) return false
+      const found = this.items.find((i) => i.id === bonusKey(p.id))
+      if (found) {
+        if (found.qty >= maxBonusQty()) return false
+        found.qty++
+      } else this.items.push({
+        id: bonusKey(p.id), kind: 'bonus', productId: p.id, name: p.name, price: 0, points: p.bonusPoints,
+        art: p.art || 'basket', image: p.image, note: '', qty: 1,
+      })
+      this.save()
+      return true
+    },
     change(id: number | string, delta: number) {
       const item = this.items.find((i) => i.id === id)
       if (!item) return
-      item.qty = Math.min(MAX_QTY, item.qty + delta)
+      item.qty = Math.min(maxQtyOf(item), item.qty + delta)
       if (item.qty <= 0) this.items = this.items.filter((i) => i.id !== id)
       this.save()
     },
-    /** Сверяет корзину с каталогом: убирает то, что больше нельзя заказать (товар скрыт, позиция шашлыка убрана из меню),
-     *  и обновляет цены и названия — корзина могла пролежать в браузере долго. true — что-то было убрано. */
+    /** Сверяет корзину с каталогом: убирает то, что больше нельзя заказать (товар скрыт, позиция шашлыка убрана из меню,
+     *  товар больше не выдаётся за баллы), и обновляет цены, баллы и названия — корзина могла пролежать в браузере долго.
+     *  true — что-то было убрано. */
     sync(): boolean {
       const { products, kebab } = useCatalog()
       const byId = new Map(products.filter((p) => p.orderable).map((p) => [p.id, p]))
+      const rewards = new Map(products.filter((p) => p.bonusPoints).map((p) => [p.id, p]))
       const before = this.items.length
       this.items = this.items.filter((i) => {
         if (i.kind === 'kebab') {
           const price = i.kebab ? kebabPrice(kebab, i.kebab) : null
           if (price === null) return false
           i.price = price
+          return true
+        }
+        if (i.kind === 'bonus') {
+          const r = i.productId === undefined ? undefined : rewards.get(i.productId)
+          if (!r) return false
+          Object.assign(i, { name: r.name, price: 0, points: r.bonusPoints, art: r.art, image: r.image, qty: Math.min(i.qty, maxBonusQty()) })
           return true
         }
         const p = i.productId === undefined ? undefined : byId.get(i.productId)
@@ -97,7 +134,8 @@ export const useCart = defineStore('cart', {
           const k = i.kebab
           return Array.from({ length: i.qty }, () => ({ type: 'kebab', ...k })) // на сервере каждая порция — отдельная позиция
         }
-        return i.productId === undefined ? [] : [{ type: 'product', productId: i.productId, qty: i.qty }]
+        if (i.productId === undefined) return []
+        return [{ type: i.kind === 'bonus' ? 'bonus' : 'product', productId: i.productId, qty: i.qty }]
       })
       const order = await api<Order>('/orders', { method: 'POST', body: { ...form, items, requestId } })
       this.items = []

@@ -8,6 +8,7 @@ import ContactView from './views/ContactView.vue'
 import AuthView from './views/AuthView.vue'
 import AccountView from './views/AccountView.vue'
 import PrivacyView from './views/PrivacyView.vue'
+import BonusView from './views/BonusView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,6 +22,7 @@ const router = createRouter({
     { path: '/about', component: AboutView },
     { path: '/contact', component: ContactView },
     { path: '/privacy', component: PrivacyView },
+    { path: '/bonus', component: BonusView },
     { path: '/login', component: AuthView, props: { mode: 'login' }, meta: { guest: true } },
     { path: '/register', component: AuthView, props: { mode: 'register' }, meta: { guest: true } },
     { path: '/account', component: AccountView, meta: { auth: true } },

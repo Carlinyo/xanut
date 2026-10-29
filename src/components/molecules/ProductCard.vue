@@ -35,10 +35,12 @@ onUnmounted(() => clearTimeout(timer))
     </RouterLink>
     <h3 class="card__title"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <PriceTag :price="product.price" :old="product.old" />
+    <RouterLink v-if="product.bonusPoints" to="/bonus" class="card__bonus">{{ $t('bonus.orPoints', { n: product.bonusPoints.toLocaleString('en-US') }) }}</RouterLink>
     <StarRating :value="product.rating" :count="product.reviews" />
     <AppButton v-if="product.orderable" block size="sm" :variant="added ? 'light' : 'primary'" @click="add">
       {{ added ? '✓ ' + $t('common.added') : '🛒 ' + $t('common.add') }}
     </AppButton>
+    <AppButton v-else-if="product.bonusPoints" block size="sm" variant="light" to="/bonus">🎁 {{ $t('bonus.getWithPoints') }}</AppButton>
     <p v-else class="card__display" :title="$t('showcase.hint')">👁 {{ $t('showcase.label') }}</p>
   </article>
 </template>
@@ -52,6 +54,8 @@ onUnmounted(() => clearTimeout(timer))
 .card__title a { transition:color .2s; }
 .card__title a:hover { color:var(--yellow-lo); }
 .card .btn { margin-top:auto; }
+.card__bonus { align-self:flex-start; margin-top:-4px; padding:2px 8px; border-radius:var(--pill); background:var(--cream); color:#8a5f00; font-size:11.5px; font-weight:700; }
+.card__bonus:hover { background:#ffeec0; }
 .card__display { margin:auto 0 0; padding:9px 8px; border:1.5px dashed var(--line); border-radius:var(--r-md); color:var(--muted); font-size:12px; font-weight:600; text-align:center; }
 .card--display .card__imgbox { filter:saturate(.85); }
 .card { --rx:0deg; --ry:0deg; transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)); }

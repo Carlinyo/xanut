@@ -26,10 +26,10 @@ watch(channels, (list) => { if (!list.includes(channel.value)) channel.value = l
 const challenge = ref<OtpChallenge | null>(null) // пока не null — показываем шаг ввода кода
 const isReg = computed(() => props.mode === 'register')
 
-type Field = 'name' | 'phone' | 'email' | 'password' | 'confirm' | 'consent'
-const FIELDS: Field[] = ['name', 'phone', 'email', 'password', 'confirm', 'consent']
-const form = reactive({ name: '', phone: '', email: '', password: '', confirm: '', consent: false })
-const errors = reactive<Record<Field, string>>({ name: '', phone: '', email: '', password: '', confirm: '', consent: '' })
+type Field = 'name' | 'phone' | 'address' | 'email' | 'password' | 'confirm' | 'consent'
+const FIELDS: Field[] = ['name', 'phone', 'address', 'email', 'password', 'confirm', 'consent']
+const form = reactive({ name: '', phone: '', address: '', email: '', password: '', confirm: '', consent: false })
+const errors = reactive<Record<Field, string>>({ name: '', phone: '', address: '', email: '', password: '', confirm: '', consent: '' })
 const formError = ref('')
 const emailSuggestion = ref('')
 const busy = ref(false)
@@ -42,6 +42,7 @@ function messageFor(f: Field): string {
   switch (f) {
     case 'name': return r(rules.name(form.name))
     case 'phone': return r(rules.phone(form.phone))
+    case 'address': return form.address.trim() ? r(rules.address(form.address)) : '' // необязательное поле
     case 'email': return r(isReg.value ? rules.email(form.email) : rules.emailLoose(form.email))
     case 'password': return isReg.value ? passwordError(form.password, pwContext.value) : form.password ? '' : t('errors.passwordRequired')
     case 'confirm': return form.confirm === form.password ? '' : t('errors.confirm')
@@ -85,7 +86,8 @@ async function submit() {
   try {
     if (isReg.value) {
       const { name, email, phone, password, consent } = form
-      challenge.value = await auth.register({ name, email, phone, password, consent, channel: channel.value })
+      const address = form.address.trim() || undefined
+      challenge.value = await auth.register({ name, email, phone, password, consent, channel: channel.value, address })
     } else {
       challenge.value = await auth.login(form.email, form.password)
       if (!challenge.value) router.push(redirect.value) // доверенное устройство: код не нужен
@@ -122,6 +124,11 @@ function onVerified() {
     <FormField v-if="isReg" v-model="form.name" :label="$t('auth.name')" :error="errors.name" autocomplete="name" maxlength="80" @blur="onBlur('name')" />
     <PhoneField v-if="isReg" v-model="form.phone" :label="$t('auth.phone')" :error="errors.phone" :valid="phoneOk" @blur="onBlur('phone')" />
     <FormField
+      v-if="isReg" v-model="form.address" :label="$t('auth.address')" :error="errors.address" :placeholder="$t('checkout.addressPlaceholder')"
+      autocomplete="street-address" maxlength="200" @blur="onBlur('address')"
+    />
+    <small v-if="isReg && !errors.address" class="auth__note">{{ $t('auth.addressHint') }}</small>
+    <FormField
       v-model="form.email" type="email" :label="$t('auth.email')" :error="errors.email" autocomplete="email"
       inputmode="email" autocapitalize="off" spellcheck="false" @blur="onBlur('email')"
     />
@@ -156,6 +163,7 @@ h1 { margin:0 0 4px; }
 .auth__field-err { margin-top:-8px; color:var(--red); font-size:12px; }
 .auth__switch a { color:var(--yellow-lo); font-weight:700; }
 .auth__suggest { margin:-6px 0 0; font-size:13px; color:var(--muted); }
+.auth__note { margin-top:-8px; color:var(--muted); font-size:12px; }
 .auth__channel { display:flex; align-items:center; gap:8px; margin:0; padding:10px 12px; border-radius:var(--r-md); background:var(--cream); font-size:13px; }
 .auth__suggest button { padding:0; border:0; background:none; color:var(--yellow-lo); font-weight:700; text-decoration:underline; }
 </style>

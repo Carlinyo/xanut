@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { api } from '../api'
 import type { Channel, OtpChallenge, PublicUser } from '../types'
 
-export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; channel: Channel }
+export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; channel: Channel; address?: string }
+export interface ProfileData { name?: string; phone?: string; address?: string }
 
 const isChallenge = (r: unknown): r is OtpChallenge => typeof r === 'object' && r !== null && 'challengeId' in r
 let restoring: Promise<void> | null = null // восстановление сессии при старте — один запрос на всё приложение
@@ -39,6 +40,10 @@ export const useAuth = defineStore('auth', {
     },
     async resend(challengeId: string): Promise<{ expiresIn: number; resendIn: number; devCode?: string }> {
       return api('/auth/resend', { method: 'POST', body: { challengeId } })
+    },
+    /** Мои данные: имя, телефон, адрес доставки. */
+    async updateProfile(data: ProfileData) {
+      this.user = await api<PublicUser>('/auth/me', { method: 'PATCH', body: data })
     },
     async logout() {
       this.user = null

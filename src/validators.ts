@@ -36,7 +36,7 @@ export function serverFieldErrors(issues?: { path: string; message: string }[]):
     else if (path === 'password') out.password = t(message === 'PASSWORD_PWNED' ? 'password.rule.PWNED' : 'password.notMet')
     else if (path === 'name') out.name = t('errors.name')
     else if (path === 'consent') out.consent = t('errors.consent')
-    else if (path === 'address') out.address = t('errors.address')
+    else if (path === 'address') out.address = t(message === 'ADDRESS_INVALID' ? 'errors.addressInvalid' : 'errors.address')
     else if (path === 'message') out.message = t('errors.message')
   }
   return out
