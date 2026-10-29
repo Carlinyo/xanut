@@ -10,7 +10,7 @@ export const useCatalog = defineStore('catalog', {
     categories: [] as Category[],
     products: [] as Product[],
     kebab: { meats: [], marinades: [], extras: [] } as KebabConfig,
-    config: { deliveryFee: 500, freeDeliveryFrom: 10000 } as ShopConfig,
+    config: { deliveryFee: 700, freeDeliveryFrom: 10000 } as ShopConfig,
     ready: false,
     loading: false,
     error: '',

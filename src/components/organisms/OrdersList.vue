@@ -11,7 +11,8 @@ defineProps<{ orders: Order[] }>()
       <div class="orders__top"><b>{{ new Date(o.createdAt).toLocaleString('en-GB') }}</b><span>{{ money(o.total) }}</span></div>
       <small class="orders__status">{{ $t('orderStatus.' + o.status) }}</small>
       <small>{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
-      <small>📍 {{ o.address }}</small>
+      <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
+      <small v-else>📍 {{ o.address }}</small>
       <small v-if="o.time">🕘 {{ formatSlot(o.time) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">
         <span v-if="o.bonus.earned">⭐ {{ $t('bonus.earned', { n: o.bonus.earned.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }} · {{ $t('bonus.state.' + o.bonus.state) }}</span>

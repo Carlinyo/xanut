@@ -45,9 +45,12 @@ function fillWho() {
 fillWho()
 watch(who, fillWho)
 watch(saved, (u) => { if (!u) who.value = 'new' })
+// самовывоз из магазина: адрес не нужен и не проверяется (выбор — в корзине над итогом)
+const pickup = computed(() => cart.method === 'pickup')
+watch(pickup, () => { errors.address = '' })
 // поля показываем, когда вводят новые данные; в «моих» — только адрес, если его ещё нет в аккаунте
 const showContact = computed(() => who.value === 'new')
-const showAddress = computed(() => who.value === 'new' || !savedHasAddress.value || fixAddress.value)
+const showAddress = computed(() => !pickup.value && (who.value === 'new' || !savedHasAddress.value || fixAddress.value))
 const phoneOk = computed(() => checkPhone(form.phone).ok)
 function checkPhoneField() { // проверка, когда покупатель ушёл из поля
   if (!form.phone) return
@@ -69,10 +72,11 @@ onMounted(loadSlots) // каждое открытие корзины — све�
 // поэтому сервер создаст один заказ; если покупатель меняет данные или корзину — это уже новая попытка.
 const busy = ref(false)
 let requestId = uuid()
-watch([form, () => cart.items], () => { if (!busy.value) requestId = uuid() }, { deep: true })
+watch([form, () => cart.items, () => cart.method], () => { if (!busy.value) requestId = uuid() }, { deep: true })
 
 function validate(): boolean {
   for (const k of ['name', 'phone', 'address'] as const) { const r = rules[k](form[k]); errors[k] = r === true ? '' : r }
+  if (pickup.value) errors.address = ''
   errors.slot = form.slot ? '' : t('errors.slot')
   return !errors.name && !errors.phone && !errors.address && !errors.slot
 }
@@ -108,7 +112,7 @@ async function fail(e: unknown) {
     if (fe.name || fe.phone || fe.address) {
       if (fe.name) errors.name = fe.name
       if (fe.phone) errors.phone = fe.phone
-      if (fe.address) errors.address = fe.address
+      if (fe.address) { if (pickup.value) errors.form = fe.address; else errors.address = fe.address } // поле адреса скрыто при самовывозе
       return
     }
   }
@@ -143,13 +147,20 @@ async function submit() {
         return
       }
     }
-    const ok = await checkAddr()
-    applyAddress(ok)
-    if (!ok) return
-    const order = await cart.checkout({ ...form, saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value } /* «мои данные» с новым или исправленным адресом — запоминаем его */, requestId)
+    if (!pickup.value) {
+      const ok = await checkAddr()
+      applyAddress(ok)
+      if (!ok) return
+    }
+    const order = await cart.checkout({
+      ...form, delivery: cart.method, address: pickup.value ? '' : form.address,
+      saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
+    }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
     void bonus.load() // списанные баллы и новые «ожидающие»
+    // сначала «заказ принят», потом очистка: пустая корзина убирает эту форму, и событие из убранной формы Vue уже не доставит
     emit('done')
+    cart.clear()
   } catch (e) {
     await fail(e)
   } finally { busy.value = false }
@@ -158,33 +169,33 @@ async function submit() {
 
 <template>
   <form class="co" novalidate @submit.prevent="submit">
-    <ChoiceToggle v-if="saved" v-model="who" :options="whoOptions" :label="$t('checkout.whoLabel')" />
+    <ChoiceToggle v-if="saved" v-model="who" :options="whoOptions" :label="$t(pickup ? 'checkout.whoLabelPickup' : 'checkout.whoLabel')" />
     <div v-if="saved && who === 'saved'" class="co__saved">
       <b>{{ saved.name }}</b>
       <span>📞 {{ formatPhone(saved.phone) }}</span>
-      <span v-if="saved.address && !fixAddress">📍 {{ saved.address }}</span>
+      <span v-if="!pickup && saved.address && !fixAddress">📍 {{ saved.address }}</span>
       <small v-if="errors.name" class="co__fielderr" role="alert">{{ errors.name }}</small>
       <small v-if="errors.phone" class="co__fielderr" role="alert">{{ errors.phone }}</small>
-      <small v-if="!saved.address" class="muted">{{ $t('checkout.savedNoAddress') }}</small>
+      <small v-if="!pickup && !saved.address" class="muted">{{ $t('checkout.savedNoAddress') }}</small>
     </div>
     <template v-if="showContact">
       <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" maxlength="80" />
-      <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t('checkout.phoneHint')" @blur="checkPhoneField" />
+      <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t(pickup ? 'checkout.phoneHintPickup' : 'checkout.phoneHint')" @blur="checkPhoneField" />
     </template>
     <FormField
       v-if="showAddress"
       v-model="form.address" :label="$t('checkout.address')" :error="errors.address" :hint="addrState === 'ok' ? addrFormatted : ''"
       :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" maxlength="200" @blur="verifyAddress"
     />
-    <small v-if="addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
+    <small v-if="!pickup && addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
     <AppToggle v-if="saved && who === 'new'" v-model="saveProfile">{{ $t('checkout.saveProfile') }}</AppToggle>
     <SlotPicker
-      v-model="form.slot" :label="$t('slots.title')" :days="slotData?.days ?? []" :today="slotData?.today ?? ''"
+      v-model="form.slot" :label="$t(pickup ? 'slots.titlePickup' : 'slots.title')" :days="slotData?.days ?? []" :today="slotData?.today ?? ''"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
     />
     <FormField v-model="form.payment" as="select" :label="$t('checkout.payment')">
       <option value="cash">{{ $t('checkout.cash') }}</option>
-      <option value="card">{{ $t('checkout.card') }}</option>
+      <option value="card">{{ $t(pickup ? 'checkout.cardPickup' : 'checkout.card') }}</option>
     </FormField>
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />

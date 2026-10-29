@@ -38,6 +38,8 @@ export interface BonusInfo { available: number; pending: number; history: BonusE
 export interface Order {
   id: number; status: string; createdAt: string
   name: string; phone: string; address: string; time: string; payment: string
+  /** pickup — самовывоз (address пустой); у старых заказов поля нет — это доставка. */
+  delivery?: 'delivery' | 'pickup'
   geo?: { formatted: string; lat: number; lon: number } | null
   subtotal: number; deliveryFee: number; total: number; items: OrderItem[]
   bonus?: OrderBonus

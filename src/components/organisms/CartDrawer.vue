@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useCart } from '../../stores/cart'
+import { t } from '../../i18n'
+import { useCart, type DeliveryMethod } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
 import { money } from '../../utils/format'
 import OverlayShell from '../molecules/OverlayShell.vue'
 import CartLine from '../molecules/CartLine.vue'
+import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AppButton from '../atoms/AppButton.vue'
 import CheckoutForm from './CheckoutForm.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus()
 const done = ref(false)
+// доставка курьером (+deliveryFee, бесплатно от порога) или самовывоз из магазина
+const method = computed({ get: () => cart.method, set: (m: DeliveryMethod) => cart.setMethod(m) })
+const methodOptions = computed(() => [
+  { value: 'delivery' as DeliveryMethod, label: `${t('cart.delivery')} ${cart.deliveryPrice ? '+' + money(cart.deliveryPrice) : '· ' + t('cart.free')}`, icon: '🚚' },
+  { value: 'pickup' as DeliveryMethod, label: t('cart.pickup'), icon: '🏪' },
+])
 </script>
 
 <template>
@@ -32,9 +40,12 @@ const done = ref(false)
           <CartLine v-for="i in cart.items" :key="i.id" :item="i" @change="cart.change(i.id, $event)" />
         </TransitionGroup>
 
+        <ChoiceToggle v-model="method" :options="methodOptions" :label="$t('cart.methodLabel')" class="drawer__method" />
+        <p v-if="cart.method === 'pickup'" class="drawer__pickup">🏪 {{ $t('cart.pickupHint', { address: $t('contact.address') }) }}</p>
+
         <dl class="sum">
           <dt>{{ $t('cart.items') }}</dt><dd>{{ money(cart.subtotal) }}</dd>
-          <dt>{{ $t('cart.delivery') }}</dt><dd>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
+          <dt>{{ $t(cart.method === 'pickup' ? 'cart.pickup' : 'cart.delivery') }}</dt><dd>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
           <template v-if="cart.pointsSpent">
             <dt>{{ $t('bonus.spentRow') }}</dt><dd class="sum__pts">−{{ $t('bonus.points', { n: cart.pointsSpent.toLocaleString('en-US') }) }}</dd>
           </template>
@@ -63,6 +74,8 @@ const done = ref(false)
 .drawer__head { display:flex; align-items:center; justify-content:space-between; }
 h2 { margin:0; font-size:22px; }
 .drawer__lines { display:flex; flex-direction:column; gap:14px; margin:18px 0; padding:0; list-style:none; }
+.drawer__method { margin-bottom:12px; }
+.drawer__pickup { margin:-4px 0 12px; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
 .drawer__ok { padding:14px; border-radius:var(--r-md); background:#e8f6ec; color:var(--green); font-weight:700; animation:rise .5s var(--ease); }
 .sum { display:grid; grid-template-columns:1fr auto; gap:8px; margin:0; padding:14px; border-radius:var(--r-md); background:var(--bg); }
 .sum dt { color:var(--muted); }

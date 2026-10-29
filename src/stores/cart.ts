@@ -7,7 +7,9 @@ import type { CartItem, KebabSelection, Order } from '../types'
 export interface Addable { id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection; orderable?: boolean }
 /** Бонусный товар: берётся за баллы. */
 export interface BonusAddable { id: number; name: string; art?: string; image?: string; bonusPoints?: number }
-export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; saveProfile?: boolean }
+/** delivery — курьер (платно, см. deliveryFee), pickup — самовывоз из магазина (бесплатно, адрес не нужен). */
+export type DeliveryMethod = 'delivery' | 'pickup'
+export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean }
 
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
@@ -20,6 +22,7 @@ const maxQtyOf = (i: CartItem) => (i.kind === 'bonus' ? maxBonusQty() : MAX_QTY)
 type OrderLine = { type: 'product' | 'bonus'; productId: number; qty: number } | ({ type: 'kebab' } & KebabSelection)
 
 const STORAGE_KEY = 'cart'
+const METHOD_KEY = 'cart-delivery'
 
 function isItem(v: unknown): v is CartItem {
   if (!v || typeof v !== 'object') return false
@@ -44,16 +47,23 @@ function stored(): CartItem[] {
   }
 }
 
+function storedMethod(): DeliveryMethod {
+  try { return localStorage.getItem(METHOD_KEY) === 'pickup' ? 'pickup' : 'delivery' } catch { return 'delivery' }
+}
+
 export const useCart = defineStore('cart', {
-  state: () => ({ items: stored() }),
+  state: () => ({ items: stored(), method: storedMethod() }),
   getters: {
     count: (s): number => s.items.reduce((n, i) => n + i.qty, 0),
     // price здесь — только для показа: сервер пересчитывает цены сам (у бонусных товаров price = 0)
     subtotal: (s): number => s.items.reduce((n, i) => n + i.price * i.qty, 0),
-    delivery(): number {
+    /** Сколько стоила бы доставка курьером при этой сумме (для подписи варианта). */
+    deliveryPrice(): number {
       const { deliveryFee, freeDeliveryFrom } = useCatalog().config
       return this.subtotal === 0 || this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
     },
+    /** Доставка в итоге: при самовывозе — 0. */
+    delivery(): number { return this.method === 'pickup' ? 0 : this.deliveryPrice },
     total(): number { return this.subtotal + this.delivery },
     /** Сколько баллов уйдёт на бонусные товары в корзине. */
     pointsSpent: (s): number => s.items.reduce((n, i) => n + (i.kind === 'bonus' ? (i.points ?? 0) * i.qty : 0), 0),
@@ -66,6 +76,10 @@ export const useCart = defineStore('cart', {
   actions: {
     save() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.items)) } catch { /* хранилище недоступно — корзина живёт до перезагрузки */ }
+    },
+    setMethod(m: DeliveryMethod) {
+      this.method = m
+      try { localStorage.setItem(METHOD_KEY, m) } catch { /* выбор живёт до перезагрузки */ }
     },
     add(p: Addable) {
       if (p.orderable === false) return // витринный товар: заказать нельзя (сервер всё равно отклонит)
@@ -127,7 +141,13 @@ export const useCart = defineStore('cart', {
       this.save()
       return this.items.length < before
     },
-    /** requestId — ключ идемпотентности: повтор того же запроса вернёт тот же заказ, а не создаст второй. */
+    /** Очистить корзину после принятого заказа. */
+    clear() {
+      this.items = []
+      this.save()
+    },
+    /** requestId — ключ идемпотентности: повтор того же запроса вернёт тот же заказ, а не создаст второй.
+     *  Корзину не очищает: это делает форма через clear() — уже после того, как сообщила «заказ принят». */
     async checkout(form: CheckoutData, requestId: string): Promise<Order> {
       const items = this.items.flatMap((i): OrderLine[] => {
         if (i.kind === 'kebab' && i.kebab) {
@@ -137,10 +157,7 @@ export const useCart = defineStore('cart', {
         if (i.productId === undefined) return []
         return [{ type: i.kind === 'bonus' ? 'bonus' : 'product', productId: i.productId, qty: i.qty }]
       })
-      const order = await api<Order>('/orders', { method: 'POST', body: { ...form, items, requestId } })
-      this.items = []
-      this.save()
-      return order
+      return api<Order>('/orders', { method: 'POST', body: { ...form, items, requestId } })
     },
   },
 })

@@ -6,10 +6,13 @@ import type { Directive } from 'vue'
 // v-reveal.once=false не нужен: элемент анимируется один раз, затем наблюдение снимается
 export type RevealVariant = 'up' | 'down' | 'left' | 'right' | 'zoom' | 'blur' | 'flip'
 
+// Элемент появляется, как только его верх заходит в экран (выше нижних 6%).
+// Порог по доле элемента (threshold) не подходит: высокая сетка товаров на телефоне
+// никогда не видна даже на 12%, и карточки оставались прозрачными до прокрутки.
 const io: IntersectionObserver | null = typeof IntersectionObserver === 'undefined' ? null
   : new IntersectionObserver((entries) => entries.forEach((e) => {
       if (e.isIntersecting) { e.target.classList.add('in'); io?.unobserve(e.target) }
-    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.12 })
+    }), { rootMargin: '0px 0px -6% 0px', threshold: 0 })
 
 function indexChildren(el: HTMLElement) {
   Array.from(el.children).forEach((c, i) => (c as HTMLElement).style.setProperty('--i', String(i)))
