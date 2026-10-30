@@ -6,6 +6,8 @@ import { useCart } from '../../stores/cart'
 import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
 import { useCatalog } from '../../stores/catalog'
+import { useConfirm, type ConfirmOptions } from '../../stores/confirm'
+import { formatSlot, money } from '../../utils/format'
 import { rules, serverFieldErrors } from '../../validators'
 import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
@@ -20,7 +22,7 @@ import AppToggle from '../atoms/AppToggle.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 
 const emit = defineEmits<{ done: [] }>()
-const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog()
+const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 const form = reactive({ name: '', phone: '', address: '', slot: '', payment: 'cash' as 'cash' | 'card' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
 
@@ -133,6 +135,23 @@ async function fail(e: unknown) {
   }
   else errors.form = t(commonErrorKey(e))
 }
+/** Сводка заказа для окна «Подтвердить заказ?»: кто, как и когда получает, сколько платит. */
+function summary(): ConfirmOptions {
+  const p = checkPhone(form.phone)
+  const rows: ConfirmOptions['rows'] = [
+    { label: t('confirm.order.who'), value: `${form.name.trim()}, ${p.ok ? formatPhone(p.e164) : form.phone}` },
+    { label: t('cart.methodLabel'), value: pickup.value ? `🏪 ${t('cart.pickup')}` : `🚚 ${t('cart.delivery')}` },
+    pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') } : { label: t('checkout.address'), value: form.address.trim() },
+    { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot) },
+    { label: t('checkout.payment'), value: form.payment === 'cash' ? t('checkout.cash') : t(pickup.value ? 'checkout.cardPickup' : 'checkout.card') },
+    { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
+  ]
+  if (!pickup.value) rows.push({ label: t('cart.delivery'), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
+  if (cart.pointsSpent) rows.push({ label: t('bonus.spentRow'), value: `−${t('bonus.points', { n: cart.pointsSpent.toLocaleString('en-US') })}` })
+  rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
+  return { icon: '🧾', title: t('confirm.order.title'), text: t('confirm.order.text'), rows, yes: t('confirm.order.yes'), no: t('confirm.order.no') }
+}
+
 async function submit() {
   if (busy.value) return
   errors.form = ''
@@ -152,6 +171,10 @@ async function submit() {
       applyAddress(ok)
       if (!ok) return
     }
+    // всё проверено — последний шаг: покупатель видит сводку и подтверждает заказ
+    busy.value = false
+    if (!(await confirm.ask(summary()))) return
+    busy.value = true
     const order = await cart.checkout({
       ...form, delivery: cart.method, address: pickup.value ? '' : form.address,
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его

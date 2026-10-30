@@ -6,6 +6,8 @@ export interface Product {
   art: string; image?: string; rating: number; reviews: number; discount: number; orderable: boolean
   /** Можно получить в подарок за столько бонусных баллов. */
   bonusPoints?: number
+  /** Товар только за баллы (заведён в админке): в каталоге не показывается, за деньги не продаётся. */
+  bonusOnly?: boolean
 }
 
 export interface KebabMeat { id: string; name: string; perKg: number }
@@ -45,6 +47,15 @@ export interface Order {
   bonus?: OrderBonus
   /** Только в ответе на новый заказ: обновлённые данные аккаунта. */
   user?: PublicUser
+}
+/** Заказ в админке: плюс почта покупателя и судьба письма «заказ готов». */
+export interface AdminOrder extends Order { email: string | null; readyEmailAt: string | null; readyEmailError: string | null }
+/** Итог письма «заказ готов»: sent — ушло; test — почта сервера в тестовом режиме (письмо только в логе); failed — не ушло. */
+export interface EmailResult { status: 'sent' | 'test' | 'failed'; to?: string; error?: string }
+/** Товар в админке (раздел «Бонусные товары»). */
+export interface AdminProduct {
+  id: number; name: string; categoryId: number; price: number; art: string; image: string | null
+  active: boolean; bonusPoints: number | null; bonusOnly: boolean
 }
 export type NavItem = { label: string; to: LinkTo } | { label: string; id: string }
 

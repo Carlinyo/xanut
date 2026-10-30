@@ -6,6 +6,7 @@ import { useCart } from '../../stores/cart'
 import { useUI } from '../../stores/ui'
 import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
+import { useLogout } from '../../composables/useLogout'
 import AppLogo from '../atoms/AppLogo.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppBadge from '../atoms/AppBadge.vue'
@@ -24,7 +25,7 @@ function onQuery(v: string) {
   ui.query = v
   if (!['/products', '/offers'].includes(route.path)) router.push('/products')
 }
-function logout() { auth.logout(); router.push('/') }
+const logout = useLogout() // спрашивает «Выйти?» и после выхода ведёт на главную
 
 const scrolled = ref(false)
 const onScroll = () => (scrolled.value = window.scrollY > 8)

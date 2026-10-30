@@ -6,16 +6,22 @@ import { useCart, type DeliveryMethod } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
+import { useConfirm } from '../../stores/confirm'
 import { money } from '../../utils/format'
 import OverlayShell from '../molecules/OverlayShell.vue'
 import CartLine from '../molecules/CartLine.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AppButton from '../atoms/AppButton.vue'
 import CheckoutForm from './CheckoutForm.vue'
+import type { CartItem } from '../../types'
 
 const emit = defineEmits<{ close: [] }>()
-const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus()
+const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus(), confirm = useConfirm()
 const done = ref(false)
+async function change(i: CartItem, delta: number) {
+  if (i.qty + delta <= 0 && !(await confirm.ask({ title: t('confirm.removeLine.title'), text: i.name, yes: t('confirm.removeLine.yes'), tone: 'danger' }))) return
+  cart.change(i.id, delta)
+}
 // доставка курьером (+deliveryFee, бесплатно от порога) или самовывоз из магазина
 const method = computed({ get: () => cart.method, set: (m: DeliveryMethod) => cart.setMethod(m) })
 const methodOptions = computed(() => [
@@ -37,7 +43,7 @@ const methodOptions = computed(() => [
 
       <template v-else>
         <TransitionGroup name="line" tag="ul" class="drawer__lines">
-          <CartLine v-for="i in cart.items" :key="i.id" :item="i" @change="cart.change(i.id, $event)" />
+          <CartLine v-for="i in cart.items" :key="i.id" :item="i" @change="change(i, $event)" />
         </TransitionGroup>
 
         <ChoiceToggle v-model="method" :options="methodOptions" :label="$t('cart.methodLabel')" class="drawer__method" />

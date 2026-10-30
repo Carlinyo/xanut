@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
+import { useLogout } from '../composables/useLogout'
 import type { Order } from '../types'
 import ProfileCard from '../components/organisms/ProfileCard.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
@@ -28,7 +29,7 @@ onMounted(async () => {
   }
   finally { loading.value = false }
 })
-function logout() { auth.logout(); router.push('/') }
+const logout = useLogout()
 </script>
 
 <template>
@@ -36,7 +37,10 @@ function logout() { auth.logout(); router.push('/') }
     <template v-if="auth.user">
       <h1>{{ $t('account.mine') }}</h1>
       <div class="duo acct-top">
-        <ProfileCard><AppButton @click="logout">{{ $t('account.logout') }}</AppButton></ProfileCard>
+        <ProfileCard>
+          <AppButton v-if="auth.user.role === 'admin'" variant="light" to="/admin">⚙ {{ $t('admin.title') }}</AppButton>
+          <AppButton @click="logout">{{ $t('account.logout') }}</AppButton>
+        </ProfileCard>
         <RouterLink to="/bonus" class="acct-bonus">
           <small>{{ $t('bonus.accountTitle') }}</small>
           <b>⭐ {{ Math.max(0, bonus.available).toLocaleString('en-US') }}</b>

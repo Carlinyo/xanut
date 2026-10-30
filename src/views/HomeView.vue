@@ -15,7 +15,7 @@ import DecorSprite from '../components/atoms/DecorSprite.vue'
 import BonusTeaser from '../components/molecules/BonusTeaser.vue'
 
 const ui = useUI(), catalog = useCatalog()
-const offers = computed(() => catalog.products.filter((p) => p.discount).slice(0, 5))
+const offers = computed(() => catalog.shopProducts.filter((p) => p.discount).slice(0, 5))
 </script>
 
 <template>

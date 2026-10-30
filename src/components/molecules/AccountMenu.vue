@@ -9,6 +9,7 @@ defineEmits<{ logout: [] }>()
   <div class="acct">
     <template v-if="user">
       <RouterLink v-if="points !== undefined" class="acct__pts" to="/bonus" :title="$t('bonus.chip')" :aria-label="`${$t('bonus.chip')}: ${points}`">⭐ {{ Math.max(0, points).toLocaleString('en-US') }}</RouterLink>
+      <RouterLink v-if="user.role === 'admin'" class="acct__item acct__admin" to="/admin" :aria-label="$t('admin.title')">⚙ <span class="acct__lbl">{{ $t('admin.link') }}</span></RouterLink>
       <RouterLink class="acct__item" to="/account" :aria-label="$t('account.mine')">👤 <span class="acct__lbl">{{ user.name }}</span></RouterLink>
       <button class="acct__item acct__out" type="button" @click="$emit('logout')">{{ $t('account.logout') }}</button>
     </template>
@@ -23,6 +24,7 @@ defineEmits<{ logout: [] }>()
 .acct__pts { display:inline-flex; align-items:center; gap:4px; margin-right:4px; padding:6px 10px; border:1px solid rgb(246 178 26 / .5); border-radius:var(--pill); color:var(--yellow); font-size:13px; font-weight:800; white-space:nowrap; transition:background .2s, border-color .2s; }
 .acct__pts:hover { background:rgb(246 178 26 / .14); border-color:var(--yellow); }
 .acct__lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.acct__admin { color:var(--yellow); font-weight:700; }
 @media (max-width:700px) { .acct__item { font-size:13px; padding:8px 6px; max-width:120px; } .acct__pts { padding:5px 8px; font-size:12px; } }
 @media (max-width:360px) { .acct__lbl, .acct__out { display:none; } .acct__pts { padding:4px 7px; margin-right:0; } }
 </style>

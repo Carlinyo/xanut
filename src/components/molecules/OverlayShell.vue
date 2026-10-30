@@ -1,18 +1,22 @@
 <script lang="ts">
 // блокировка прокрутки страницы — со счётчиком: закрытие одного окна не должно снимать её, пока открыто другое
 let scrollLocks = 0
+// открытые окна по порядку: клавиши (Escape, Tab) обрабатывает только верхнее — например, окно подтверждения поверх корзины
+const stack: symbol[] = []
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 </script>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-withDefaults(defineProps<{ side?: 'right' | 'center'; label?: string }>(), { side: 'center' })
+withDefaults(defineProps<{ side?: 'right' | 'center'; label?: string; role?: 'dialog' | 'alertdialog' }>(), { side: 'center', role: 'dialog' })
 const emit = defineEmits<{ close: [] }>()
 const sheet = ref<HTMLElement | null>(null)
+const me = Symbol('overlay')
 let returnFocus: HTMLElement | null = null
 
 // Escape закрывает окно; Tab ходит по кругу внутри окна, а не по странице под затемнением
 function onKey(e: KeyboardEvent) {
+  if (stack[stack.length - 1] !== me) return // поверх открыто другое окно — клавиши его
   if (e.key === 'Escape') { emit('close'); return }
   const box = sheet.value
   if (e.key !== 'Tab' || !box) return
@@ -25,12 +29,14 @@ function onKey(e: KeyboardEvent) {
 
 onMounted(() => {
   returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  stack.push(me)
   document.addEventListener('keydown', onKey)
   if (scrollLocks++ === 0) document.body.style.overflow = 'hidden'
   sheet.value?.focus({ preventScroll: true }) // экранный диктор сразу читает заголовок окна
 })
 onUnmounted(() => {
   document.removeEventListener('keydown', onKey)
+  stack.splice(stack.indexOf(me), 1)
   if (--scrollLocks === 0) document.body.style.overflow = ''
   if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }) // фокус — обратно на кнопку, открывшую окно
 })
@@ -38,7 +44,7 @@ onUnmounted(() => {
 
 <template>
   <div class="overlay" :class="`overlay--${side}`" @click.self="emit('close')">
-    <div ref="sheet" class="sheet" role="dialog" aria-modal="true" :aria-label="label" tabindex="-1"><slot /></div>
+    <div ref="sheet" class="sheet" :role="role" aria-modal="true" :aria-label="label" tabindex="-1"><slot /></div>
   </div>
 </template>
 

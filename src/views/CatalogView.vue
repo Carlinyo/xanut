@@ -21,7 +21,7 @@ const title = computed(() =>
     : categories.value.find((c) => c.id === cat.value)?.name ?? t('catalog.title'))
 const list = computed(() => {
   const q = ui.query.trim().toLowerCase() // «стейк » с пробелом в конце тоже должен находиться
-  const l = catalog.products.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || p.discount) && p.name.toLowerCase().includes(q))
+  const l = catalog.shopProducts.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || p.discount) && p.name.toLowerCase().includes(q))
   if (sort.value === 'asc') return l.sort((a, b) => a.price - b.price)
   if (sort.value === 'desc') return l.sort((a, b) => b.price - a.price)
   if (sort.value === 'disc') return l.sort((a, b) => b.discount - a.discount)

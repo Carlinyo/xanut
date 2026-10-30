@@ -13,6 +13,7 @@ import CartFab from '../components/molecules/CartFab.vue'
 import LoadingState from '../components/molecules/LoadingState.vue'
 import ScrollProgress from '../components/atoms/ScrollProgress.vue'
 import BackToTop from '../components/molecules/BackToTop.vue'
+import ConfirmDialog from '../components/molecules/ConfirmDialog.vue'
 
 const cart = useCart(), ui = useUI(), catalog = useCatalog(), auth = useAuth(), bonus = useBonus()
 catalog.load()
@@ -36,4 +37,5 @@ watch(() => auth.user?.id, (id) => (id ? bonus.load() : bonus.reset()), { immedi
   <CartFab v-if="cart.count && !ui.cartOpen" :count="cart.count" @click="ui.cartOpen = true" />
   <Transition name="overlay"><CartDrawer v-if="ui.cartOpen" @close="ui.cartOpen = false" /></Transition>
   <Transition name="overlay"><KebabOrderModal v-if="ui.kebabOpen && catalog.ready" @close="ui.kebabOpen = false" /></Transition>
+  <ConfirmDialog />
 </template>

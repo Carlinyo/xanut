@@ -10,6 +10,7 @@ import StarRating from '../atoms/StarRating.vue'
 import PriceTag from '../atoms/PriceTag.vue'
 import AppButton from '../atoms/AppButton.vue'
 import { flyToCart } from '../../utils/flyToCart'
+import { money } from '../../utils/format'
 
 import type { Product } from '../../types'
 
@@ -48,9 +49,12 @@ onUnmounted(() => clearTimeout(timer))
     </div>
     <div class="pdp__info">
       <h1>{{ product.name }}</h1>
-      <StarRating :value="product.rating" :count="product.reviews" />
-      <PriceTag :price="product.price" :old="product.old" size="lg" />
-      <p class="muted">{{ $t('product.info') }}</p>
+      <template v-if="!product.bonusOnly">
+        <StarRating :value="product.rating" :count="product.reviews" />
+        <PriceTag :price="product.price" :old="product.old" size="lg" />
+        <p class="muted">{{ $t('product.info') }}</p>
+      </template>
+      <p v-else-if="product.price" class="muted">{{ $t('bonus.value', { price: money(product.price) }) }}</p>
       <AppButton v-if="product.orderable" size="lg" :variant="added ? 'light' : 'primary'" @click="add">
         {{ added ? '✓ ' + $t('common.added') : '🛒 ' + $t('common.add') }}
       </AppButton>

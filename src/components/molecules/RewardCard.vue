@@ -38,7 +38,7 @@ onUnmounted(() => clearTimeout(timer))
     </RouterLink>
     <h3 class="rw__name"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <p class="rw__pts"><span aria-hidden="true">🎁</span> {{ $t('bonus.points', { n: points.toLocaleString('en-US') }) }}</p>
-    <small class="rw__value">{{ $t('bonus.value', { price: money(product.price) }) }}</small>
+    <small v-if="product.price" class="rw__value">{{ $t('bonus.value', { price: money(product.price) }) }}</small>
     <AppButton v-if="status === 'ok'" block size="sm" :variant="added ? 'light' : 'primary'" @click="get">
       {{ added ? '✓ ' + $t('bonus.added') : $t('bonus.get') }}
     </AppButton>

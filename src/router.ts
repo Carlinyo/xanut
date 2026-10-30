@@ -26,6 +26,7 @@ const router = createRouter({
     { path: '/login', component: AuthView, props: { mode: 'login' }, meta: { guest: true } },
     { path: '/register', component: AuthView, props: { mode: 'register' }, meta: { guest: true } },
     { path: '/account', component: AccountView, meta: { auth: true } },
+    { path: '/admin', component: () => import('./views/AdminView.vue'), meta: { auth: true, admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
@@ -34,6 +35,7 @@ router.beforeEach(async (to) => {
   const auth = useAuth()
   if (to.meta.auth || to.meta.guest) await auth.restore() // вошёл ли человек, станет известно после ответа /auth/me
   if (to.meta.auth && !auth.isAuth) return { path: '/login', query: { redirect: to.fullPath } }
+  if (to.meta.admin && auth.user?.role !== 'admin') return '/' // админка — только для роли admin (сервер проверяет то же самое)
   if (to.meta.guest && auth.isAuth) return '/'
   return true
 })
