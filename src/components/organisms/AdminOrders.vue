@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../../i18n'
 import { ApiError, commonErrorKey } from '../../api'
 import { useAdmin } from '../../stores/admin'
@@ -7,13 +7,17 @@ import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import { useConfirm } from '../../stores/confirm'
 import { formatPhone } from '../../utils/phone'
 import { money } from '../../utils/format'
+import { createTicker } from '../../utils/ticker'
+import { playChime, soundSupported, soundUnlocked, unlockSound } from '../../utils/sound'
 import type { AdminOrder, EmailResult } from '../../types'
 import AdminOrderCard from '../molecules/AdminOrderCard.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppInput from '../atoms/AppInput.vue'
 
 type Filter = 'active' | 'done' | 'cancelled' | 'all'
-const POLL_MS = 30_000
+/** Как часто спрашивать о новых заказах: открытая вкладка — каждые 5 с, фоновая — каждые 15 с (один короткий запрос). */
+const POLL_MS = 5_000, HIDDEN_POLL_MS = 15_000
+const SOUND_KEY = 'admin-sound'
 
 const admin = useAdmin(), authError = useAuthRedirect(), confirm = useConfirm()
 const filter = ref<Filter>('active')
@@ -26,6 +30,7 @@ const busy = ref<Set<number>>(new Set())
 /** Итог последнего действия по заказу (письмо ушло / не ушло / ошибка) — показывается в его карточке. */
 const results = ref<Record<number, { email?: EmailResult | null; error?: string }>>({})
 
+const root = ref<HTMLElement | null>(null)
 const groupOf = (o: AdminOrder): Filter => (o.status === 'done' ? 'done' : o.status === 'cancelled' ? 'cancelled' : 'active')
 const counts = computed(() => {
   const c: Record<Filter, number> = { active: 0, done: 0, cancelled: 0, all: admin.orders.length }
@@ -57,32 +62,105 @@ async function load() {
   }
 }
 
-// Новые заказы: раз в полминуты спрашиваем номер последнего заказа (один дешёвый запрос), список — только если он изменился
-const newIds = ref<number[]>([])
+// Новые заказы: каждые несколько секунд спрашиваем номер последнего заказа, список — только если он изменился.
+// Новый заказ подсвечивается, звучит звонок, а в фоновой вкладке число новых видно в заголовке.
+const offline = ref(false)
+let checking = false
 async function poll() {
-  if (document.visibilityState !== 'visible' || loading.value || !admin.ordersLoaded) return
+  if (checking || loading.value) return
+  checking = true
   try {
-    const ids = await admin.checkNew()
+    if (!admin.ordersLoaded) { // первая загрузка не удалась (нет связи) — пробуем снова сами
+      await admin.loadOrders()
+      error.value = ''
+    } else {
+      const ids = await admin.checkNew()
+      if (ids.length) announce(ids)
+    }
     updatedAt.value = new Date()
-    if (!ids.length) return
-    newIds.value = [...new Set([...newIds.value, ...ids])]
-    ids.forEach((id) => fresh.value.add(id))
-  } catch (e) { authError(e) } // нет связи — попробуем в следующий раз
+    offline.value = false
+  } catch (e) {
+    if (!authError(e)) offline.value = true // нет связи — спросим снова по таймеру
+  } finally {
+    checking = false
+  }
 }
-let timer: ReturnType<typeof setInterval> | undefined
-const onVisible = () => { if (document.visibilityState === 'visible') void poll() }
+function announce(ids: number[]) {
+  admin.newIds = [...new Set([...admin.newIds, ...ids])]
+  ids.forEach((id) => fresh.value.add(id))
+  if (sound.value) playChime()
+  if (document.visibilityState !== 'visible') { unseen += ids.length; badge() }
+}
+async function showNew() {
+  filter.value = 'active'
+  query.value = ''
+  admin.newIds = []
+  await nextTick()
+  root.value?.querySelector('.is-fresh')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+// «(2) 🔔 …» в заголовке вкладки, пока админка в фоне
+let unseen = 0, baseTitle = ''
+function badge() {
+  if (!unseen) {
+    if (baseTitle) document.title = baseTitle
+    baseTitle = ''
+    return
+  }
+  baseTitle ||= document.title
+  document.title = `(${unseen}) 🔔 ${baseTitle}`
+}
+
+// Звук: включён по умолчанию, выбор помнит браузер. Играть звук браузер разрешает только после нажатия на странице —
+// пока его не было, показываем подсказку; первое же нажатие (в любом месте) включает звук.
+const soundOk = soundSupported()
+const readSound = () => { try { return localStorage.getItem(SOUND_KEY) !== 'off' } catch { return true } }
+const sound = ref(soundOk && readSound())
+const soundLocked = ref(false)
+async function tryUnlock() { soundLocked.value = sound.value && !(await unlockSound()) }
+/** Включить звук и сразу дать послушать, как звучит новый заказ (нажатие разрешает звук в браузере). */
+async function enableSound() {
+  await tryUnlock()
+  playChime()
+}
+async function toggleSound() {
+  sound.value = !sound.value
+  try { localStorage.setItem(SOUND_KEY, sound.value ? 'on' : 'off') } catch { /* выбор живёт до перезагрузки */ }
+  if (sound.value) await enableSound()
+  else soundLocked.value = false
+}
+const GESTURES = ['pointerdown', 'keydown', 'touchend'] as const
+const onGesture = () => { if (sound.value && !soundUnlocked()) void tryUnlock() }
+/** Было ли уже нажатие на странице (переход в админку по ссылке) — тогда звук можно включить сразу. */
+const activated = () => (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true
+
+const ticker = createTicker(() => void poll())
+const schedule = () => ticker.start(document.visibilityState === 'visible' ? POLL_MS : HIDDEN_POLL_MS)
+function onVisibility() {
+  schedule()
+  if (document.visibilityState !== 'visible') return
+  unseen = 0
+  badge()
+  void poll()
+}
+const onOnline = () => void poll()
 onMounted(() => {
   if (!admin.ordersLoaded) void load()
   else void poll()
-  timer = setInterval(poll, POLL_MS)
-  document.addEventListener('visibilitychange', onVisible)
+  schedule()
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('online', onOnline)
+  GESTURES.forEach((g) => window.addEventListener(g, onGesture, { capture: true, passive: true }))
+  if (sound.value) { if (activated()) void tryUnlock(); else soundLocked.value = true }
 })
-onUnmounted(() => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible) })
-function showNew() {
-  filter.value = 'active'
-  query.value = ''
-  newIds.value = []
-}
+onUnmounted(() => {
+  ticker.dispose()
+  document.removeEventListener('visibilitychange', onVisibility)
+  window.removeEventListener('online', onOnline)
+  GESTURES.forEach((g) => window.removeEventListener(g, onGesture, { capture: true }))
+  unseen = 0
+  badge()
+})
 
 const loadingMore = ref(false)
 async function more() {
@@ -144,7 +222,7 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
 </script>
 
 <template>
-  <section class="ao">
+  <section ref="root" class="ao">
     <div class="ao__bar">
       <div class="ao__filters" role="group" :aria-label="$t('admin.filter.label')">
         <button
@@ -156,14 +234,24 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
       </div>
       <AppInput v-model="query" class="ao__search" type="search" :placeholder="$t('admin.search')" :aria-label="$t('admin.search')" />
       <div class="ao__refresh">
-        <small v-if="updatedAt" class="muted">{{ $t('admin.updated', { time: time(updatedAt) }) }}</small>
-        <AppButton size="sm" variant="light" :disabled="loading" @click="load">🔄 {{ $t('admin.refresh') }}</AppButton>
+        <button
+          v-if="soundOk" type="button" class="ao__sound" :class="{ off: !sound }" :aria-pressed="sound"
+          :title="$t(sound ? 'admin.sound.offHint' : 'admin.sound.onHint')" @click="toggleSound"
+        >
+          {{ sound ? '🔔' : '🔕' }} {{ $t(sound ? 'admin.sound.on' : 'admin.sound.off') }}
+        </button>
+        <small v-if="offline" class="ao__offline" role="status">⚠ {{ $t('admin.offline') }}</small>
+        <small v-else-if="updatedAt" class="muted">{{ $t('admin.updated', { time: time(updatedAt) }) }}</small>
+        <AppButton size="sm" variant="light" :disabled="loading" :title="$t('admin.refresh')" @click="load">🔄 <span class="ao__lbl">{{ $t('admin.refresh') }}</span></AppButton>
       </div>
     </div>
 
-    <button v-if="newIds.length" type="button" class="ao__new" @click="showNew">
-      🔔 {{ $t('admin.newOrders', { ids: newIds.map((id) => '№' + id).join(', ') }) }}
-    </button>
+    <button v-if="sound && soundLocked" type="button" class="ao__unlock" @click="enableSound">🔇 {{ $t('admin.sound.locked') }}</button>
+    <div aria-live="polite">
+      <button v-if="admin.newIds.length" type="button" class="ao__new" @click="showNew">
+        🔔 {{ $t('admin.newOrders', { ids: admin.newIds.map((id) => '№' + id).join(', ') }) }}
+      </button>
+    </div>
 
     <Transition name="nt">
       <div v-if="notice" class="ao__notice" :class="`is-${notice.tone}`" role="status">
@@ -199,6 +287,12 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
 .ao__filter.is-active:not(.on) .ao__num { background:var(--cream); color:#8a5f00; }
 .ao__search { flex:1 1 220px; max-width:360px; padding:9px 14px; }
 .ao__refresh { display:flex; align-items:center; gap:10px; margin-left:auto; }
+.ao__sound { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:#5c4100; font-size:13px; font-weight:700; white-space:nowrap; transition:background .2s, border-color .2s, color .2s; }
+.ao__sound.off { border-color:var(--line); background:#fff; color:var(--muted); }
+.ao__sound:hover { border-color:var(--yellow-lo); }
+.ao__offline { color:var(--red); font-weight:600; }
+.ao__unlock { display:block; width:100%; margin-bottom:12px; padding:10px 14px; border:1.5px dashed var(--yellow-lo); border-radius:var(--r-md); background:#fff; color:#7a5600; font-size:14px; font-weight:600; text-align:left; }
+.ao__unlock:hover { background:var(--cream); }
 .ao__new { display:block; width:100%; margin-bottom:14px; padding:12px 16px; border:1.5px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); color:#5c4100; font-size:15px; font-weight:700; text-align:left; animation:rise .5s var(--ease); }
 .ao__notice { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; padding:12px 14px 12px 16px; border-radius:var(--r-md); font-size:14px; font-weight:600; line-height:1.45; overflow-wrap:anywhere; }
 .ao__notice.is-ok { background:#e6f4ea; color:var(--green); }
@@ -217,5 +311,6 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
 .tk-enter-from { opacity:0; transform:translateY(-12px); }
 .tk-leave-active { display:none; }
 @media (max-width:700px) { .ao__refresh { width:100%; justify-content:space-between; margin-left:0; } .ao__search { max-width:none; } }
+@media (max-width:480px) { .ao__lbl { display:none; } }
 @media (prefers-reduced-motion:reduce) { .tk-move, .tk-enter-active { transition:none; } .ao__new { animation:none; } }
 </style>

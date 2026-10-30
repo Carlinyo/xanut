@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatSlot, money } from '../../utils/format'
+import { discountLabel } from '../../utils/segments'
 import type { Order } from '../../types'
 
 defineProps<{ orders: Order[] }>()
@@ -14,6 +15,7 @@ defineProps<{ orders: Order[] }>()
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
       <small v-if="o.time">🕘 {{ formatSlot(o.time) }}</small>
+      <small v-if="o.discount" class="orders__disc">🏷 {{ discountLabel(o.segment) }}՝ −{{ money(o.discount) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">
         <span v-if="o.bonus.earned">⭐ {{ $t('bonus.earned', { n: o.bonus.earned.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }} · {{ $t('bonus.state.' + o.bonus.state) }}</span>
         <span v-if="o.bonus.spent">🎁 {{ $t('bonus.spent', { n: o.bonus.spent.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }}</span>
@@ -29,6 +31,7 @@ li:hover { border-color:var(--yellow); box-shadow:var(--shadow-sm); }
 .orders__top { display:flex; justify-content:space-between; gap:12px; }
 small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
+.orders__disc { color:var(--green); font-weight:600; }
 .orders__bonus { display:flex; flex-wrap:wrap; gap:4px 14px; color:#8a5f00; font-weight:600; }
 .orders__bonus.is-available { color:var(--green); }
 .orders__bonus.is-cancelled { text-decoration:line-through; opacity:.7; }

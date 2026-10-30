@@ -8,6 +8,7 @@ import { useBonus } from '../../stores/bonus'
 import { useCatalog } from '../../stores/catalog'
 import { useConfirm, type ConfirmOptions } from '../../stores/confirm'
 import { formatSlot, money } from '../../utils/format'
+import { discountLabel } from '../../utils/segments'
 import { rules, serverFieldErrors } from '../../validators'
 import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
@@ -146,6 +147,7 @@ function summary(): ConfirmOptions {
     { label: t('checkout.payment'), value: form.payment === 'cash' ? t('checkout.cash') : t(pickup.value ? 'checkout.cardPickup' : 'checkout.card') },
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
   ]
+  if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
   if (!pickup.value) rows.push({ label: t('cart.delivery'), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
   if (cart.pointsSpent) rows.push({ label: t('bonus.spentRow'), value: `−${t('bonus.points', { n: cart.pointsSpent.toLocaleString('en-US') })}` })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
@@ -159,12 +161,11 @@ async function submit() {
   if (cart.pointsSpent && !cart.hasPaid) { errors.form = t('bonus.needsPaid'); return }
   busy.value = true
   try {
-    if (cart.pointsSpent) { // хватает ли баллов — по свежему балансу (окончательно проверит сервер)
-      await bonus.load()
-      if (cart.pointsSpent > bonus.available) {
-        errors.form = t('bonus.notEnough', { available: bonus.available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
-        return
-      }
+    // свежие баланс и группа покупателя: цена в окне подтверждения — та же, что посчитает сервер
+    await bonus.load()
+    if (cart.pointsSpent > bonus.available) { // хватает ли баллов (окончательно проверит сервер)
+      errors.form = t('bonus.notEnough', { available: bonus.available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
+      return
     }
     if (!pickup.value) {
       const ok = await checkAddr()

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
+import { nextLevelText, perksText, SEGMENT_ICON } from '../utils/segments'
 import type { Order } from '../types'
 import ProfileCard from '../components/organisms/ProfileCard.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
@@ -30,6 +31,8 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 const logout = useLogout()
+// группа покупателя: её акция и сколько осталось до следующей
+const level = computed(() => bonus.level)
 </script>
 
 <template>
@@ -45,6 +48,11 @@ const logout = useLogout()
           <small>{{ $t('bonus.accountTitle') }}</small>
           <b>⭐ {{ Math.max(0, bonus.available).toLocaleString('en-US') }}</b>
           <small v-if="bonus.pending" class="acct-bonus__pending">{{ $t('bonus.pending', { n: bonus.pending.toLocaleString('en-US') }) }}</small>
+          <span v-if="level" class="acct-bonus__seg">
+            {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b>
+            <template v-if="perksText(level.perks)"> · {{ perksText(level.perks) }}</template>
+          </span>
+          <small v-if="level && nextLevelText(level)" class="acct-bonus__next">{{ nextLevelText(level) }}</small>
           <span class="acct-bonus__link">{{ $t('bonus.accountLink') }} →</span>
         </RouterLink>
       </div>
@@ -67,6 +75,9 @@ const logout = useLogout()
 .acct-bonus small { color:#cbd6d3; }
 .acct-bonus b { font-size:clamp(30px, 4vw, 42px); color:var(--yellow); line-height:1.1; }
 .acct-bonus .acct-bonus__pending { color:#ffe2a0; }
+.acct-bonus__seg { align-self:flex-start; margin-top:4px; padding:5px 12px; border:1px solid rgb(246 178 26 / .5); border-radius:var(--pill); background:rgb(0 0 0 / .25); font-size:13px; line-height:1.4; }
+.acct-bonus .acct-bonus__seg b { font-size:inherit; color:var(--yellow); }
+.acct-bonus .acct-bonus__next { color:#e3ebe9; }
 .acct-bonus__link { margin-top:6px; color:var(--yellow); font-weight:700; }
 @media (hover:hover) { .acct-bonus:hover { transform:translateY(-3px); box-shadow:var(--shadow-md); } }
 </style>

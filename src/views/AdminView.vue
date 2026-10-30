@@ -3,12 +3,13 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAdmin } from '../stores/admin'
 import AdminOrders from '../components/organisms/AdminOrders.vue'
+import AdminCustomers from '../components/organisms/AdminCustomers.vue'
 import AdminRewards from '../components/organisms/AdminRewards.vue'
 
-// Вкладка хранится в адресе (?tab=rewards): после обновления страницы открыта та же
+// Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
 const route = useRoute(), router = useRouter(), admin = useAdmin()
-type Tab = 'orders' | 'rewards'
-const tab = computed<Tab>(() => (route.query.tab === 'rewards' ? 'rewards' : 'orders'))
+type Tab = 'orders' | 'customers' | 'rewards'
+const tab = computed<Tab>(() => (route.query.tab === 'rewards' || route.query.tab === 'customers' ? route.query.tab : 'orders'))
 const open = (t: Tab) => router.replace({ query: t === 'orders' ? {} : { tab: t } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
 </script>
@@ -19,15 +20,19 @@ const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancell
       <h1>⚙ {{ $t('admin.title') }}</h1>
       <div class="adm__tabs" role="tablist" :aria-label="$t('admin.tabs.label')">
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'orders' }" :aria-selected="tab === 'orders'" @click="open('orders')">
-          📦 {{ $t('admin.tabs.orders') }}<span v-if="activeCount" class="adm__count">{{ activeCount }}</span>
+          📦 {{ $t('admin.tabs.orders') }}<span v-if="activeCount" class="adm__count" :class="{ 'is-new': admin.newIds.length && tab !== 'orders' }">{{ activeCount }}</span>
+        </button>
+        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'customers' }" :aria-selected="tab === 'customers'" @click="open('customers')">
+          👥 {{ $t('admin.tabs.customers') }}
         </button>
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'rewards' }" :aria-selected="tab === 'rewards'" @click="open('rewards')">
           🎁 {{ $t('admin.tabs.rewards') }}
         </button>
       </div>
     </div>
-    <!-- заказы не выгружаем при переключении вкладок: опрос новых заказов продолжает работать -->
+    <!-- заказы не выгружаем при переключении вкладок: новые заказы видно и слышно и на других вкладках админки -->
     <AdminOrders v-show="tab === 'orders'" role="tabpanel" />
+    <AdminCustomers v-if="tab === 'customers'" role="tabpanel" />
     <AdminRewards v-if="tab === 'rewards'" role="tabpanel" />
   </div>
 </template>
@@ -40,5 +45,9 @@ const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancell
 .adm__tab:hover { color:#fff; background:var(--dark-2); }
 .adm__tab.on { background:var(--yellow); color:#1b1500; }
 .adm__count { min-width:22px; padding:2px 7px; border-radius:var(--pill); background:var(--red); color:#fff; font-size:12px; line-height:1.4; text-align:center; }
-@media (max-width:560px) { .adm__tabs { width:100%; } .adm__tab { flex:1; justify-content:center; padding:10px 8px; font-size:13px; } }
+/* новый заказ, пока открыта другая вкладка админки */
+.adm__count.is-new { animation:ping 1.2s var(--ease) infinite; }
+@keyframes ping { 0%, 100% { box-shadow:0 0 0 0 rgb(229 52 43 / .6); } 60% { box-shadow:0 0 0 7px rgb(229 52 43 / 0); } }
+@media (prefers-reduced-motion:reduce) { .adm__count.is-new { animation:none; outline:2px solid var(--yellow); } }
+@media (max-width:640px) { .adm__tabs { width:100%; } .adm__tab { flex:1; justify-content:center; gap:5px; padding:10px 6px; font-size:12.5px; } }
 </style>

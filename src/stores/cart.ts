@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
+import { useBonus } from './bonus'
 import { kebabPrice } from '../utils/kebab'
-import type { CartItem, KebabSelection, Order } from '../types'
+import { applyPerks } from '../utils/segments'
+import type { CartItem, KebabSelection, Order, Perks } from '../types'
 
 export interface Addable { id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection; orderable?: boolean }
 /** Бонусный товар: берётся за баллы. */
@@ -57,18 +59,25 @@ export const useCart = defineStore('cart', {
     count: (s): number => s.items.reduce((n, i) => n + i.qty, 0),
     // price здесь — только для показа: сервер пересчитывает цены сам (у бонусных товаров price = 0)
     subtotal: (s): number => s.items.reduce((n, i) => n + i.price * i.qty, 0),
-    /** Сколько стоила бы доставка курьером при этой сумме (для подписи варианта). */
-    deliveryPrice(): number {
+    /** Акция группы покупателя (новый, постоянный, VIP): скидка, баллы, бесплатная доставка. */
+    perks: (): Perks => useBonus().perks,
+    /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки. */
+    priced(): ReturnType<typeof applyPerks> {
       const { deliveryFee, freeDeliveryFrom } = useCatalog().config
-      return this.subtotal === 0 || this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
+      const base = this.subtotal === 0 || this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
+      return applyPerks(this.subtotal, base, this.perks)
     },
+    /** Скидка по акции группы (֏). */
+    discount(): number { return this.priced.discount },
+    /** Сколько стоила бы доставка курьером (для подписи варианта). */
+    deliveryPrice(): number { return this.priced.deliveryFee },
     /** Доставка в итоге: при самовывозе — 0. */
     delivery(): number { return this.method === 'pickup' ? 0 : this.deliveryPrice },
-    total(): number { return this.subtotal + this.delivery },
+    total(): number { return this.subtotal - this.discount + this.delivery },
     /** Сколько баллов уйдёт на бонусные товары в корзине. */
     pointsSpent: (s): number => s.items.reduce((n, i) => n + (i.kind === 'bonus' ? (i.points ?? 0) * i.qty : 0), 0),
-    /** Сколько баллов принесёт заказ (2% от товаров, без доставки) — окончательно считает сервер. */
-    pointsEarned(): number { return Math.floor(this.subtotal * (useCatalog().config.bonus?.rate ?? 0.02)) },
+    /** Сколько баллов принесёт заказ (процент группы от товаров после скидки, без доставки) — окончательно считает сервер. */
+    pointsEarned(): number { return this.priced.bonusEarned },
     /** Есть ли что-то оплачиваемое: бонусные товары едут только вместе с заказом. */
     hasPaid: (s): boolean => s.items.some((i) => i.kind !== 'bonus'),
     bonusQty: (s) => (productId: number): number => s.items.find((i) => i.id === bonusKey(productId))?.qty ?? 0,

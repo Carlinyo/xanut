@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { t } from '../i18n'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useCart } from '../stores/cart'
 import { useCatalog } from '../stores/catalog'
-import type { Product } from '../types'
+import { nextLevelText, ruleText, SEGMENT_ICON, SEGMENTS } from '../utils/segments'
+import type { Perks, Product, Segment } from '../types'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import FeatureItem from '../components/molecules/FeatureItem.vue'
 import RewardCard from '../components/molecules/RewardCard.vue'
@@ -27,6 +29,16 @@ function statusOf(p: Product): 'guest' | 'lack' | 'max' | 'ok' {
 }
 const get = (p: Product) => cart.addBonus(p) // корзину не открываем: можно выбрать ещё
 const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
+
+// Группы клиентов: чем больше покупок — тем больше акция. Настройки — с сервера (меняются в админке).
+const segments = computed(() => catalog.config.segments ?? null)
+const level = computed(() => (auth.isAuth ? bonus.level : null))
+const ruleOf = (s: Segment): string => ruleText(s, segments.value?.rules)
+const perkList = (p: Perks): string[] => [
+  p.discount > 0 && t('segments.perkLong.discount', { n: p.discount }),
+  p.bonusPercent > 0 && t('segments.perkLong.bonus', { n: p.bonusPercent }),
+  p.freeDelivery && t('segments.perkLong.free'),
+].filter((x): x is string => !!x)
 </script>
 
 <template>
@@ -58,6 +70,23 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
       <div v-reveal.stagger="'flip'" class="steps">
         <FeatureItem v-for="s in $t('bonus.steps')" :key="s.title" :icon="s.icon" :title="s.title" :text="s.text.replace('{percent}', String(percent))" />
       </div>
+    </section>
+
+    <section v-if="segments" class="section">
+      <SectionTitle>{{ $t('segments.title') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('segments.lead') }}</p>
+      <div v-reveal.stagger class="lvls">
+        <article v-for="s in SEGMENTS" :key="s" class="lvl" :class="[`is-${s}`, { 'is-mine': level?.segment === s }]">
+          <span v-if="level?.segment === s" class="lvl__you">{{ $t('segments.you') }}</span>
+          <h3>{{ SEGMENT_ICON[s] }} {{ $t('segments.names.' + s) }}</h3>
+          <small class="lvl__rule">{{ ruleOf(s) }}</small>
+          <ul v-if="perkList(segments.perks[s]).length">
+            <li v-for="p in perkList(segments.perks[s])" :key="p">{{ p }}</li>
+          </ul>
+        </article>
+      </div>
+      <p v-if="level && nextLevelText(level)" class="lvl-next">⭐ {{ nextLevelText(level) }}</p>
+      <p v-else-if="level?.manual" class="lvl-next">{{ $t('segments.manualNote') }}</p>
     </section>
 
     <section class="section">
@@ -108,6 +137,20 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
 .hero-b__cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
 .steps { display:grid; grid-template-columns:repeat(3, 1fr); border-radius:var(--r-lg); background:var(--bg); }
 .steps > :not(:first-child) { border-left:1px solid var(--line); }
+.lvl-lead { max-width:70ch; margin:-6px 0 16px; color:var(--muted); font-size:15px; line-height:1.55; }
+.lvls { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+.lvl { position:relative; display:flex; flex-direction:column; gap:6px; padding:18px 18px 16px; border:1.5px solid var(--line); border-radius:var(--r-lg); background:#fff; }
+.lvl h3 { margin:0; font-size:18px; }
+.lvl__rule { color:var(--muted); font-size:13px; }
+.lvl ul { margin:6px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:5px; font-size:14px; font-weight:600; }
+.lvl li::before { content:'✓ '; color:var(--green); }
+.lvl.is-regular { background:linear-gradient(160deg, #fff, #fff4ea); }
+.lvl.is-vip { border-color:var(--dark); background:radial-gradient(240px 140px at 90% 10%, rgb(246 178 26 / .28), transparent 70%), var(--dark); color:#fff; }
+.lvl.is-vip .lvl__rule { color:#cbd6d3; }
+.lvl.is-vip li::before { color:var(--yellow); }
+.lvl.is-mine { border-color:var(--yellow); box-shadow:0 0 0 3px rgb(246 178 26 / .35); }
+.lvl__you { position:absolute; top:-11px; right:14px; padding:3px 10px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:12px; font-weight:800; }
+.lvl-next { margin:14px 0 0; padding:10px 14px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:14px; font-weight:600; }
 .rewards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap:14px; }
 .hist { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
 .hist li { display:flex; align-items:center; gap:12px; padding:12px 16px; border:1px solid var(--line); border-radius:var(--r-lg); }
@@ -122,6 +165,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
 .rules h2 { margin:0 0 10px; font-size:20px; }
 .rules ul { margin:0; padding-left:20px; color:var(--muted); font-size:14px; line-height:1.6; }
 @media (max-width:800px) { .hero-b { grid-template-columns:1fr; } }
+@media (max-width:760px) { .lvls { grid-template-columns:1fr; } }
 @media (max-width:640px) { .steps { grid-template-columns:1fr; } .steps > :not(:first-child) { border-left:0; border-top:1px solid var(--line); } }
 @media (max-width:480px) { .rewards { grid-template-columns:1fr 1fr; gap:10px; } .hist li { flex-wrap:wrap; gap:6px 12px; } }
 </style>

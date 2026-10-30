@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
+import { discountLabel, isSegment, SEGMENT_ICON } from '../../utils/segments'
 import type { AdminOrder, EmailResult } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
@@ -13,6 +14,8 @@ const emit = defineEmits<{ status: [status: string]; resend: [] }>()
 const o = computed(() => props.order)
 const group = computed(() => (o.value.status === 'done' ? 'done' : o.value.status === 'cancelled' ? 'cancelled' : 'active'))
 const pickup = computed(() => o.value.delivery === 'pickup')
+/** Группа клиента на момент заказа: постоянного и VIP видно сразу (у нового метки нет). */
+const segment = computed(() => (isSegment(o.value.segment) ? o.value.segment : null))
 const pad = (n: number) => String(n).padStart(2, '0')
 const stamp = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}, ${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const clock = (iso: string) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
@@ -50,6 +53,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       <div class="tk__id">
         <b class="tk__num">№{{ o.id }}</b>
         <span class="tk__status">{{ $t('orderStatus.' + o.status) }}</span>
+        <span v-if="segment && segment !== 'new'" class="tk__seg" :class="`is-${segment}`">{{ SEGMENT_ICON[segment] }} {{ $t('segments.short.' + segment) }}</span>
         <small class="tk__placed">{{ $t('admin.placed', { time: stamp(o.createdAt) }) }}</small>
       </div>
       <div v-if="o.time" class="tk__when">
@@ -79,6 +83,9 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
           <span class="tk__sum">{{ i.kind === 'bonus' ? $t('bonus.points', { n: nf((i.points ?? 0) * i.qty) }) : money(i.unitPrice * i.qty) }}</span>
         </li>
       </ul>
+      <div v-if="o.discount" class="tk__line tk__disc">
+        <span>🏷 {{ discountLabel(o.segment) }}</span><span>−{{ money(o.discount) }}</span>
+      </div>
       <div v-if="!pickup" class="tk__line"><span>{{ $t('cart.delivery') }}</span><span>{{ o.deliveryFee ? money(o.deliveryFee) : $t('cart.free') }}</span></div>
       <div class="tk__line tk__total"><span>{{ $t('cart.total') }} <small>({{ payment }})</small></span><span>{{ money(o.total) }}</span></div>
       <div v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="tk__pts">
@@ -125,6 +132,9 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 .tk__status { padding:3px 10px; border-radius:var(--pill); background:var(--cream); color:#7a5600; font-size:12.5px; font-weight:700; }
 .is-done .tk__status { background:#e6f4ea; color:var(--green); }
 .is-cancelled .tk__status { background:var(--bg); color:var(--muted); }
+.tk__seg { padding:3px 10px; border-radius:var(--pill); font-size:12.5px; font-weight:800; }
+.tk__seg.is-regular { background:#fff1e6; color:#b4470b; }
+.tk__seg.is-vip { background:var(--dark); color:var(--yellow); }
 .tk__placed { flex-basis:100%; color:var(--muted); font-size:12.5px; }
 .tk__when { display:flex; flex-direction:column; align-items:flex-end; text-align:right; }
 .tk__when small { color:var(--muted); font-size:12px; }
@@ -148,6 +158,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 .tk__sum { flex:none; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .is-bonus .tk__sum { color:#8a5f00; font-weight:700; }
 .tk__line { color:var(--muted); }
+.tk__line.tk__disc { color:var(--green); font-weight:600; }
 .tk__total { color:var(--ink); font-size:16px; font-weight:800; }
 .tk__total small { color:var(--muted); font-size:12.5px; font-weight:500; }
 .tk__pts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }

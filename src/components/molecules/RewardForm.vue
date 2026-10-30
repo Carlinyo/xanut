@@ -47,7 +47,7 @@ const groups = computed(() => {
 })
 const chosen = computed(() => admin.products.find((p) => p.id === form.productId) ?? null)
 const rate = computed(() => catalog.config.bonus?.rate ?? 0.02)
-const pointsHint = computed(() => (int(form.points) > 0 ? t('admin.rewards.form.pointsHint', { sum: money(Math.ceil(int(form.points) / rate.value / 100) * 100) }) : ''))
+const pointsHint = computed(() => (int(form.points) > 0 && rate.value > 0 ? t('admin.rewards.form.pointsHint', { sum: money(Math.ceil(int(form.points) / rate.value / 100) * 100) }) : ''))
 
 function validate(): boolean {
   Object.assign(errors, { productId: '', name: '', points: '', price: '', form: '' })

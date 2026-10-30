@@ -21,7 +21,7 @@ const busyId = ref<number | null>(null)
 const formBox = ref<HTMLElement | null>(null)
 
 const percent = computed(() => catalog.config.bonus?.percent ?? 2)
-const per = computed(() => Math.round(1 / (catalog.config.bonus?.rate ?? 0.02)))
+const per = computed(() => { const rate = catalog.config.bonus?.rate ?? 0.02; return rate > 0 ? Math.round(1 / rate) : 0 })
 const nf = (n: number) => n.toLocaleString('en-US')
 
 async function load() {
@@ -62,7 +62,7 @@ async function remove(p: AdminProduct) {
 <template>
   <section class="ar">
     <div class="ar__top">
-      <p class="ar__lead">{{ $t('admin.rewards.lead', { percent, per }) }}</p>
+      <p class="ar__lead">{{ $t(per ? 'admin.rewards.lead' : 'admin.rewards.leadNoEarn', { percent, per }) }}</p>
       <AppButton v-if="editing === null" @click="open('new')">+ {{ $t('admin.rewards.add') }}</AppButton>
     </div>
 

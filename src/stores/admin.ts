@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import type { AdminOrder, AdminProduct, EmailResult } from '../types'
+import { useCatalog } from './catalog'
+import type { AdminOrder, AdminProduct, AdminUser, EmailResult, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
@@ -10,16 +11,22 @@ export type RewardPatch = Partial<Omit<RewardDraft, 'bonusPoints'>> & { bonusPoi
 
 const newestFirst = (a: AdminOrder, b: AdminOrder) => b.createdAt.localeCompare(a.createdAt)
 
-// Админка: заказы и бонусные товары. Права проверяет сервер (роль admin), здесь — только данные для экрана.
+// Админка: заказы, клиенты и их группы, бонусные товары. Права проверяет сервер (роль admin), здесь — только данные для экрана.
 export const useAdmin = defineStore('admin', {
   state: () => ({
     orders: [] as AdminOrder[],
     nextBefore: null as string | null,
     /** Номер последнего заказа — по нему видно, что пришли новые. */
     lastId: 0,
+    /** Новые заказы, которые админ ещё не открыл (плашка «Նոր պատվեր» и метка на вкладке «Заказы»). */
+    newIds: [] as number[],
     ordersLoaded: false,
     products: [] as AdminProduct[],
     productsLoaded: false,
+    users: [] as AdminUser[],
+    usersLoaded: false,
+    /** Акции групп клиентов и правила групп. */
+    segments: null as SegmentSettings | null,
   }),
   getters: {
     rewards: (s): AdminProduct[] => s.products.filter((p) => p.bonusPoints || p.bonusOnly).sort((a, b) => (a.bonusPoints ?? 0) - (b.bonusPoints ?? 0)),
@@ -57,6 +64,25 @@ export const useAdmin = defineStore('admin', {
       const r = await api<OrderUpdate>(`/admin/orders/${id}/notify`, { method: 'POST', timeout: 40_000 })
       this.put(r.order)
       return r.email
+    },
+
+    async loadUsers() {
+      const r = await api<{ users: AdminUser[]; segments: SegmentSettings }>('/admin/users')
+      Object.assign(this, { users: r.users, segments: r.segments, usersLoaded: true })
+    },
+    /** Назначить группу клиенту; null — снова считать по покупкам. */
+    async setSegment(id: string, segment: Segment | null): Promise<AdminUser> {
+      const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { segment } })
+      this.users = this.users.map((x) => (x.id === u.id ? u : x))
+      return u
+    },
+    /** Сохранить акции групп. Новые пороги меняют группы клиентов — список загружается заново. */
+    async saveSegments(value: SegmentSettings) {
+      const saved = await api<SegmentSettings>('/admin/segments', { method: 'PUT', body: value })
+      this.segments = saved
+      const catalog = useCatalog()
+      catalog.config = { ...catalog.config, segments: saved, bonus: catalog.config.bonus && { ...catalog.config.bonus, percent: saved.perks.new.bonusPercent, rate: saved.perks.new.bonusPercent / 100 } }
+      await this.loadUsers().catch(() => {}) // акции уже сохранены; список обновится при следующем открытии
     },
 
     async loadProducts() {

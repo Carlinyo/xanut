@@ -15,7 +15,15 @@ export interface KebabExtra { id: string; name: string; price: number }
 export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[] }
 export interface KebabSelection { meat: string; kg: number; marinade: string; extras: string[]; comment?: string }
 export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number }
-export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otpChannels?: Channel[]; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig }
+/** Группа клиента: новый, постоянный, VIP. */
+export type Segment = 'new' | 'regular' | 'vip'
+/** Акция группы: скидка на товары (%), баллы с покупки (%), бесплатная доставка. */
+export interface Perks { discount: number; bonusPercent: number; freeDelivery: boolean }
+/** С какого числа заказов клиент постоянный и VIP (или с какой суммы покупок — VIP). */
+export interface SegmentRules { regularOrders: number; vipOrders: number; vipSpent: number }
+export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
+export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otpChannels?: Channel[]; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
+  segments?: SegmentSettings }
 
 export interface CartItem {
   id: number | string; kind: 'product' | 'kebab' | 'bonus'; productId?: number; kebab?: KebabSelection
@@ -36,7 +44,12 @@ export interface OrderItem { name: string; kind?: string; unitPrice: number; qty
 export type BonusState = 'pending' | 'available' | 'cancelled'
 export interface OrderBonus { earned: number; spent: number; state: BonusState; availableAt: string }
 export interface BonusEntry { orderId: number; createdAt: string; earned: number; spent: number; state: BonusState; availableAt: string }
-export interface BonusInfo { available: number; pending: number; history: BonusEntry[] }
+/** Группа покупателя: manual — назначена магазином; next — сколько осталось до следующей группы (null — выше некуда или назначена). */
+export interface CustomerLevel {
+  segment: Segment; manual: boolean; perks: Perks; orders: number; spent: number
+  next: { segment: Segment; ordersLeft: number; spentLeft: number | null } | null
+}
+export interface BonusInfo { available: number; pending: number; history: BonusEntry[]; level?: CustomerLevel }
 export interface Order {
   id: number; status: string; createdAt: string
   name: string; phone: string; address: string; time: string; payment: string
@@ -44,6 +57,8 @@ export interface Order {
   delivery?: 'delivery' | 'pickup'
   geo?: { formatted: string; lat: number; lon: number } | null
   subtotal: number; deliveryFee: number; total: number; items: OrderItem[]
+  /** Скидка по акции группы (֏) и группа клиента на момент заказа; у старых заказов полей нет. */
+  discount?: number; segment?: string | null
   bonus?: OrderBonus
   /** Только в ответе на новый заказ: обновлённые данные аккаунта. */
   user?: PublicUser
@@ -56,6 +71,14 @@ export interface EmailResult { status: 'sent' | 'test' | 'failed'; to?: string; 
 export interface AdminProduct {
   id: number; name: string; categoryId: number; price: number; art: string; image: string | null
   active: boolean; bonusPoints: number | null; bonusOnly: boolean
+}
+/** Клиент в админке: данные аккаунта, покупки, баллы и группа (назначенная вручную или по покупкам). */
+export interface AdminUser {
+  id: string; name: string; email: string; phone: string; address: string | null; role: string; createdAt: string
+  emailVerified: boolean; phoneVerified: boolean
+  segment: Segment; segmentManual: boolean; autoSegment: Segment
+  orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
+  bonus: { available: number; pending: number }
 }
 export type NavItem = { label: string; to: LinkTo } | { label: string; id: string }
 
