@@ -122,18 +122,6 @@ async function fail(e: unknown) {
   if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
   else if (code === 'ADDRESS_UNAVAILABLE') errors.address = t('errors.addressUnavailable')
   else if (code === 'PHONE_EXISTS') errors.phone = t('auth.phoneExists') // «запомнить» номер, который уже у другого аккаунта
-  else if (code === 'BONUS_INSUFFICIENT') { // баллов меньше, чем думал сайт (например, заказ отменили) — показываем настоящий баланс
-    const available = Number(err?.details.available ?? 0)
-    bonus.available = available
-    errors.form = t('bonus.notEnough', { available: available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
-  }
-  else if (code === 'BONUS_NEEDS_PAID') errors.form = t('bonus.needsPaid')
-  else if (code === 'BONUS_QTY') errors.form = t('bonus.tooMany', { n: catalog.config.bonus?.maxQty ?? 10 })
-  else if (code === 'NOT_BONUS') { // товар перестал выдаваться за баллы, пока лежал в корзине: обновляем каталог и корзину
-    await catalog.load(true)
-    cart.sync()
-    errors.form = t('bonus.gone')
-  }
   else errors.form = t(commonErrorKey(e))
 }
 /** Сводка заказа для окна «Подтвердить заказ?»: кто, как и когда получает, сколько платит. */
@@ -149,7 +137,6 @@ function summary(): ConfirmOptions {
   ]
   if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
   if (!pickup.value) rows.push({ label: t('cart.delivery'), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
-  if (cart.pointsSpent) rows.push({ label: t('bonus.spentRow'), value: `−${t('bonus.points', { n: cart.pointsSpent.toLocaleString('en-US') })}` })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
   return { icon: '🧾', title: t('confirm.order.title'), text: t('confirm.order.text'), rows, yes: t('confirm.order.yes'), no: t('confirm.order.no') }
 }
@@ -158,15 +145,10 @@ async function submit() {
   if (busy.value) return
   errors.form = ''
   if (!validate()) return
-  if (cart.pointsSpent && !cart.hasPaid) { errors.form = t('bonus.needsPaid'); return }
   busy.value = true
   try {
     // свежие баланс и группа покупателя: цена в окне подтверждения — та же, что посчитает сервер
     await bonus.load()
-    if (cart.pointsSpent > bonus.available) { // хватает ли баллов (окончательно проверит сервер)
-      errors.form = t('bonus.notEnough', { available: bonus.available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') })
-      return
-    }
     if (!pickup.value) {
       const ok = await checkAddr()
       applyAddress(ok)
@@ -181,7 +163,7 @@ async function submit() {
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
-    void bonus.load() // списанные баллы и новые «ожидающие»
+    void bonus.load() // новые «ожидающие» баллы
     // сначала «заказ принят», потом очистка: пустая корзина убирает эту форму, и событие из убранной формы Vue уже не доставит
     emit('done')
     cart.clear()

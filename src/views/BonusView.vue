@@ -1,33 +1,77 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { t } from '../i18n'
+import { ApiError, commonErrorKey } from '../api'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
-import { useCart } from '../stores/cart'
 import { useCatalog } from '../stores/catalog'
+import { useConfirm } from '../stores/confirm'
 import { nextLevelText, ruleText, SEGMENT_ICON, SEGMENTS } from '../utils/segments'
-import type { Perks, Product, Segment } from '../types'
+import type { Perks, Product, Redemption, Segment } from '../types'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import FeatureItem from '../components/molecules/FeatureItem.vue'
 import RewardCard from '../components/molecules/RewardCard.vue'
 import AppButton from '../components/atoms/AppButton.vue'
+import ProductArt from '../components/atoms/ProductArt.vue'
 
-const auth = useAuth(), bonus = useBonus(), cart = useCart(), catalog = useCatalog()
+const auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 onMounted(() => { if (auth.isAuth) void bonus.load() }) // свежий баланс при каждом открытии
 
 const percent = computed(() => bonus.percent)
-const maxQty = computed(() => catalog.config.bonus?.maxQty ?? 10)
 const hours = computed(() => catalog.config.bonus?.matureHours ?? 3)
 const nf = (n: number) => n.toLocaleString('en-US')
-/** Сколько баллов ещё можно потратить с учётом того, что уже лежит в корзине. */
-const left = computed(() => bonus.available - cart.pointsSpent)
+const left = computed(() => bonus.available)
 
-function statusOf(p: Product): 'guest' | 'lack' | 'max' | 'ok' {
+function statusOf(p: Product): 'guest' | 'lack' | 'ok' {
   if (!auth.isAuth) return 'guest'
-  if (cart.bonusQty(p.id) >= maxQty.value) return 'max'
   return (p.bonusPoints ?? 0) <= left.value ? 'ok' : 'lack'
 }
-const get = (p: Product) => cart.addBonus(p) // корзину не открываем: можно выбрать ещё
+
+// Подарок не кладётся в корзину: баллы обмениваются на код, покупатель показывает его продавцу,
+// продавец вводит код в админке, подтверждает и отдаёт товар.
+const busyId = ref<number | null>(null)
+const busyCode = ref('')
+const error = ref('')
+const fresh = ref('') // только что полученный код — подсвечиваем
+const codesBox = ref<HTMLElement | null>(null)
+
+async function get(p: Product) {
+  if (busyId.value !== null) return
+  const ok = await confirm.ask({ icon: '🎁', title: t('bonus.redeemAsk.title'), text: t('bonus.redeemAsk.text', { name: p.name, n: nf(p.bonusPoints ?? 0) }), yes: t('bonus.redeemAsk.yes') })
+  if (!ok) return
+  busyId.value = p.id
+  error.value = ''
+  try {
+    fresh.value = (await bonus.redeem(p.id)).code
+    await nextTick()
+    codesBox.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } catch (e) {
+    const code = e instanceof ApiError ? e.code : ''
+    if (code === 'BONUS_INSUFFICIENT') {
+      bonus.available = Number((e as ApiError).details.available ?? 0) // баллов меньше, чем думал сайт — показываем настоящий баланс
+      error.value = t('bonus.notEnough', { available: nf(bonus.available) })
+    } else if (code === 'NOT_BONUS') {
+      error.value = t('bonus.gone')
+      void catalog.load(true)
+    } else error.value = t(commonErrorKey(e))
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function cancel(r: Redemption) {
+  const ok = await confirm.ask({ icon: '🎟', title: t('bonus.cancelAsk.title'), text: t('bonus.cancelAsk.text', { name: r.name, n: nf(r.points) }),
+    yes: t('bonus.cancelAsk.yes'), no: t('bonus.cancelAsk.no'), tone: 'danger' })
+  if (!ok) return
+  busyCode.value = r.code
+  error.value = ''
+  try { await bonus.cancelRedemption(r.code) } catch (e) {
+    if (e instanceof ApiError && e.code === 'ALREADY_DONE') { error.value = t('bonus.alreadyDone'); void bonus.load() }
+    else error.value = t(commonErrorKey(e))
+  } finally {
+    busyCode.value = ''
+  }
+}
 const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
 
 // Группы клиентов: чем больше покупок — тем больше акция. Настройки — с сервера (меняются в админке).
@@ -53,7 +97,6 @@ const perkList = (p: Perks): string[] => [
           <small>{{ $t('bonus.available') }}</small>
           <b class="hero-b__num">⭐ {{ nf(Math.max(0, bonus.available)) }}</b>
           <small v-if="bonus.pending" class="hero-b__pending">{{ $t('bonus.pending', { n: nf(bonus.pending) }) }}</small>
-          <small v-if="cart.pointsSpent" class="hero-b__pending">{{ $t('bonus.spentRow') }}: −{{ nf(cart.pointsSpent) }}</small>
         </template>
         <template v-else>
           <p>{{ $t('bonus.guest') }}</p>
@@ -89,13 +132,30 @@ const perkList = (p: Perks): string[] => [
       <p v-else-if="level?.manual" class="lvl-next">{{ $t('segments.manualNote') }}</p>
     </section>
 
+    <section v-if="auth.isAuth && bonus.redemptions.length" ref="codesBox" class="section codes-sec">
+      <SectionTitle>🎟 {{ $t('bonus.codesTitle') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('bonus.codesLead') }}</p>
+      <ul class="codes">
+        <li v-for="r in bonus.redemptions" :key="r.code" class="code" :class="[`is-${r.status}`, { 'is-fresh': r.code === fresh }]">
+          <span class="code__art"><ProductArt :kind="r.art" :src="r.image" :alt="r.name" /></span>
+          <div class="code__main">
+            <b>{{ r.name }}</b>
+            <small>{{ date(r.createdAt) }} · {{ $t('bonus.points', { n: nf(r.points) }) }} · {{ $t('bonus.codeStatus.' + r.status) }}</small>
+          </div>
+          <span class="code__val">{{ r.code }}</span>
+          <button v-if="r.status === 'pending'" type="button" class="code__cancel" :disabled="busyCode === r.code" @click="cancel(r)">{{ $t('bonus.cancelCode') }}</button>
+        </li>
+      </ul>
+    </section>
+
     <section class="section">
       <SectionTitle>{{ $t('bonus.rewardsTitle') }}</SectionTitle>
+      <p v-if="error" class="err" role="alert">{{ error }}</p>
       <p v-if="!bonus.rewards.length" class="muted">{{ $t('bonus.rewardsEmpty') }}</p>
       <div v-else v-reveal.stagger class="rewards">
         <RewardCard
           v-for="p in bonus.rewards" :key="p.id" :product="p" :status="statusOf(p)" :lack="(p.bonusPoints ?? 0) - left"
-          :in-cart="cart.bonusQty(p.id)" :max-qty="maxQty" @get="get"
+          :busy="busyId === p.id" @get="get"
         />
       </div>
     </section>
@@ -118,7 +178,7 @@ const perkList = (p: Perks): string[] => [
     <section class="section rules">
       <h2>{{ $t('bonus.rulesTitle') }}</h2>
       <ul>
-        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)).replace('{max}', String(maxQty)) }}</li>
+        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
       </ul>
     </section>
   </div>
@@ -151,6 +211,22 @@ const perkList = (p: Perks): string[] => [
 .lvl.is-mine { border-color:var(--yellow); box-shadow:0 0 0 3px rgb(246 178 26 / .35); }
 .lvl__you { position:absolute; top:-11px; right:14px; padding:3px 10px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:12px; font-weight:800; }
 .lvl-next { margin:14px 0 0; padding:10px 14px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:14px; font-weight:600; }
+.err { padding:10px 14px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:14px; }
+.codes-sec { scroll-margin-top:120px; }
+.codes { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
+.code { display:flex; align-items:center; gap:12px 14px; padding:12px 16px; border:1.5px solid var(--line); border-radius:var(--r-lg); background:#fff; transition:border-color .3s, box-shadow .3s; }
+.code.is-pending { border-color:rgb(217 151 0 / .45); background:var(--cream); }
+.code.is-fresh { border-color:var(--yellow); box-shadow:0 0 0 3px rgb(246 178 26 / .35); }
+.code.is-done, .code.is-cancelled { opacity:.65; }
+.code.is-cancelled .code__val { text-decoration:line-through; }
+.code__art { flex:none; display:grid; place-items:center; width:52px; height:52px; padding:6px; border-radius:var(--r-md); background:#fff; }
+.code__main { flex:1; min-width:0; display:flex; flex-direction:column; }
+.code__main small { color:var(--muted); }
+.code__val { flex:none; padding:6px 12px; border:1.5px dashed #b07a00; border-radius:var(--r-md); background:#fff; color:#1b1500; font:800 clamp(17px, 2.4vw, 22px)/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing:.08em; user-select:all; }
+.code__cancel { flex:none; padding:4px 0; border:0; background:none; color:var(--muted); font-size:13px; font-weight:600; text-decoration:underline; text-underline-offset:3px; }
+.code__cancel:hover { color:var(--red); }
+.code__cancel:disabled { opacity:.5; cursor:progress; }
+@media (max-width:560px) { .code { flex-wrap:wrap; } .code__val { order:3; } .code__cancel { order:4; margin-left:auto; } }
 .rewards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap:14px; }
 .hist { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
 .hist li { display:flex; align-items:center; gap:12px; padding:12px 16px; border:1px solid var(--line); border-radius:var(--r-lg); }

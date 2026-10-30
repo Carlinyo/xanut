@@ -5,11 +5,13 @@ import { useAdmin } from '../stores/admin'
 import AdminOrders from '../components/organisms/AdminOrders.vue'
 import AdminCustomers from '../components/organisms/AdminCustomers.vue'
 import AdminRewards from '../components/organisms/AdminRewards.vue'
+import AdminCodes from '../components/organisms/AdminCodes.vue'
 
 // Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
 const route = useRoute(), router = useRouter(), admin = useAdmin()
-type Tab = 'orders' | 'customers' | 'rewards'
-const tab = computed<Tab>(() => (route.query.tab === 'rewards' || route.query.tab === 'customers' ? route.query.tab : 'orders'))
+type Tab = 'orders' | 'customers' | 'rewards' | 'codes'
+const TABS: Tab[] = ['orders', 'customers', 'rewards', 'codes']
+const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
 const open = (t: Tab) => router.replace({ query: t === 'orders' ? {} : { tab: t } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
 </script>
@@ -28,12 +30,16 @@ const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancell
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'rewards' }" :aria-selected="tab === 'rewards'" @click="open('rewards')">
           🎁 {{ $t('admin.tabs.rewards') }}
         </button>
+        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'codes' }" :aria-selected="tab === 'codes'" @click="open('codes')">
+          🎟 {{ $t('admin.tabs.codes') }}
+        </button>
       </div>
     </div>
     <!-- заказы не выгружаем при переключении вкладок: новые заказы видно и слышно и на других вкладках админки -->
     <AdminOrders v-show="tab === 'orders'" role="tabpanel" />
     <AdminCustomers v-if="tab === 'customers'" role="tabpanel" />
     <AdminRewards v-if="tab === 'rewards'" role="tabpanel" />
+    <AdminCodes v-if="tab === 'codes'" role="tabpanel" />
   </div>
 </template>
 

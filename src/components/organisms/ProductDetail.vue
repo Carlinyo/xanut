@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { useCart } from '../../stores/cart'
-import { useAuth } from '../../stores/auth'
-import { useBonus } from '../../stores/bonus'
-import { useCatalog } from '../../stores/catalog'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppBadge from '../atoms/AppBadge.vue'
 import StarRating from '../atoms/StarRating.vue'
@@ -15,21 +12,9 @@ import { money } from '../../utils/format'
 import type { Product } from '../../types'
 
 const props = defineProps<{ product: Product }>()
-const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog()
+const cart = useCart()
 const added = ref(false)
 const imgBox = ref<HTMLElement | null>(null)
-// бонусный товар: можно взять сразу, если хватает баллов (с учётом корзины), иначе — на страницу бонусов
-const canTakeBonus = computed(() => {
-  const pts = props.product.bonusPoints ?? 0
-  return auth.isAuth && pts > 0 && pts <= bonus.available - cart.pointsSpent && cart.bonusQty(props.product.id) < (catalog.config.bonus?.maxQty ?? 10)
-})
-const bonusAdded = ref(false)
-function takeBonus() {
-  if (!cart.addBonus(props.product)) return
-  flyToCart(imgBox.value?.querySelector('img') ?? null)
-  bonusAdded.value = true
-  setTimeout(() => (bonusAdded.value = false), 1300)
-}
 let timer: ReturnType<typeof setTimeout> | undefined
 function add() {
   cart.add(props.product)
@@ -61,8 +46,8 @@ onUnmounted(() => clearTimeout(timer))
       <p v-else-if="!product.bonusPoints" class="pdp__display">👁 {{ $t('showcase.hint') }}</p>
       <div v-if="product.bonusPoints" class="pdp__bonus">
         <p>{{ $t('bonus.productHint', { n: product.bonusPoints.toLocaleString('en-US') }) }}</p>
-        <AppButton v-if="canTakeBonus" variant="light" @click="takeBonus">{{ bonusAdded ? '✓ ' + $t('bonus.added') : '🎁 ' + $t('bonus.getWithPoints') }}</AppButton>
-        <AppButton v-else variant="light" to="/bonus">🎁 {{ $t('bonus.title') }}</AppButton>
+        <!-- подарок не кладётся в корзину: на странице бонусов баллы обмениваются на код для продавца -->
+        <AppButton variant="light" to="/bonus">🎁 {{ $t('bonus.getWithPoints') }}</AppButton>
       </div>
     </div>
   </div>

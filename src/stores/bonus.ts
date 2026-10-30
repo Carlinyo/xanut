@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { BonusEntry, BonusInfo, CustomerLevel, Perks, Product } from '../types'
+import type { BonusEntry, BonusInfo, CustomerLevel, Perks, Product, Redemption } from '../types'
 
 // Бонусные баллы и группа покупателя (новый, постоянный, VIP). Баланс и группу считает сервер (по заказам), здесь — только показ.
 export const useBonus = defineStore('bonus', {
-  state: () => ({ available: 0, pending: 0, history: [] as BonusEntry[], level: null as CustomerLevel | null, loaded: false }),
+  state: () => ({ available: 0, pending: 0, history: [] as BonusEntry[], redemptions: [] as Redemption[], level: null as CustomerLevel | null, loaded: false }),
   getters: {
     /** Бонусные товары — из каталога (товары с ценой в баллах), дешёвые первыми. */
     rewards: (): Product[] => useCatalog().products.filter((p) => p.bonusPoints).sort((a, b) => a.bonusPoints! - b.bonusPoints!),
@@ -21,9 +21,23 @@ export const useBonus = defineStore('bonus', {
     async load() {
       try {
         const r = await api<BonusInfo>('/bonus')
-        Object.assign(this, r, { level: r.level ?? null, loaded: true })
+        Object.assign(this, r, { redemptions: r.redemptions ?? [], level: r.level ?? null, loaded: true })
       } catch { /* гость или нет связи — покажем без баланса */ }
     },
-    reset() { Object.assign(this, { available: 0, pending: 0, history: [], level: null, loaded: false }) },
+    /** Обменять баллы на подарок: сервер списывает баллы и выдаёт код, который покупатель показывает продавцу. */
+    async redeem(productId: number): Promise<Redemption> {
+      const r = await api<Redemption>('/bonus/redeem', { method: 'POST', body: { productId } })
+      this.redemptions.unshift(r)
+      this.available -= r.points
+      return r
+    },
+    /** Отменить ещё не выданный подарок: баллы вернутся. */
+    async cancelRedemption(code: string) {
+      const r = await api<Redemption>(`/bonus/redemptions/${encodeURIComponent(code)}/cancel`, { method: 'POST' })
+      const i = this.redemptions.findIndex((x) => x.code === r.code)
+      if (i >= 0) this.redemptions[i] = r
+      this.available += r.points
+    },
+    reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, loaded: false }) },
   },
 })

@@ -59,9 +59,6 @@ const methodOptions = computed(() => [
             <dt>🏷 {{ discountLabel(level?.segment) }}</dt><dd class="sum__disc">−{{ money(cart.discount) }}</dd>
           </template>
           <dt>{{ $t(cart.method === 'pickup' ? 'cart.pickup' : 'cart.delivery') }}</dt><dd>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
-          <template v-if="cart.pointsSpent">
-            <dt>{{ $t('bonus.spentRow') }}</dt><dd class="sum__pts">−{{ $t('bonus.points', { n: cart.pointsSpent.toLocaleString('en-US') }) }}</dd>
-          </template>
           <dt class="sum__total">{{ $t('cart.total') }}</dt><dd class="sum__total">{{ money(cart.total) }}</dd>
         </dl>
         <p v-if="showPerks && level" class="drawer__perk">
@@ -69,10 +66,6 @@ const methodOptions = computed(() => [
         </p>
         <p v-if="cart.delivery" class="muted">{{ $t('cart.freeFrom', { amount: catalog.config.freeDeliveryFrom.toLocaleString('en-US') }) }}</p>
         <p v-if="cart.pointsEarned" class="drawer__earn">{{ $t(auth.isAuth ? 'bonus.earnHint' : 'bonus.guestEarn', { n: cart.pointsEarned.toLocaleString('en-US') }) }}</p>
-        <p v-if="cart.pointsSpent && !cart.hasPaid" class="drawer__warn" role="alert">{{ $t('bonus.needsPaid') }}</p>
-        <p v-else-if="auth.isAuth && bonus.loaded && cart.pointsSpent > bonus.available" class="drawer__warn" role="alert">
-          {{ $t('bonus.notEnough', { available: bonus.available.toLocaleString('en-US'), need: cart.pointsSpent.toLocaleString('en-US') }) }}
-        </p>
 
         <CheckoutForm v-if="auth.isAuth" @done="done = true" />
         <div v-else class="gate">
@@ -97,12 +90,10 @@ h2 { margin:0; font-size:22px; }
 .sum dt { color:var(--muted); }
 .sum dd { margin:0; text-align:right; }
 .sum .sum__total { margin-top:4px; padding-top:10px; border-top:1px dashed var(--line); color:var(--ink); font-size:18px; font-weight:800; }
-.sum .sum__pts { color:var(--yellow-lo); font-weight:700; }
 .sum .sum__disc { color:var(--green); font-weight:700; }
 .drawer__perk { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--dark); color:#e9efed; font-size:13px; line-height:1.45; }
 .drawer__perk b { color:var(--yellow); }
 .drawer__earn { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
-.drawer__warn { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:13px; }
 .gate { display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:16px; border:1px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); }
 .gate p { margin:0; font-weight:600; }
 .line-enter-active, .line-leave-active, .line-move { transition:opacity .3s, transform .35s var(--ease); }

@@ -1,49 +1,34 @@
 <script setup lang="ts">
-// Бонусный товар: картинка, цена в баллах и кнопка «Ստանալ». Что делать по клику, решает страница.
-import { computed, onUnmounted, ref } from 'vue'
+// Бонусный товар: картинка, цена в баллах и кнопка «получить код». Что делать по клику, решает страница.
+import { computed } from 'vue'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppButton from '../atoms/AppButton.vue'
 import { money } from '../../utils/format'
-import { flyToCart } from '../../utils/flyToCart'
 import type { Product } from '../../types'
 
 const props = defineProps<{
   product: Product
-  /** guest — не вошёл; lack — не хватает баллов; max — больше этого товара взять нельзя; ok — можно взять */
-  status: 'guest' | 'lack' | 'max' | 'ok'
+  /** guest — не вошёл; lack — не хватает баллов; ok — можно обменять */
+  status: 'guest' | 'lack' | 'ok'
   lack?: number
-  inCart?: number
-  maxQty?: number
+  /** идёт обмен — кнопку не нажать второй раз */
+  busy?: boolean
 }>()
-const emit = defineEmits<{ get: [product: Product] }>()
-const art = ref<HTMLElement | null>(null)
-const added = ref(false)
-let timer: ReturnType<typeof setTimeout> | undefined
+defineEmits<{ get: [product: Product] }>()
 const points = computed(() => props.product.bonusPoints ?? 0)
-function get() {
-  emit('get', props.product)
-  flyToCart(art.value?.querySelector('img') ?? null)
-  added.value = true
-  clearTimeout(timer)
-  timer = setTimeout(() => (added.value = false), 1300)
-}
-onUnmounted(() => clearTimeout(timer))
 </script>
 
 <template>
   <article class="rw" :class="{ 'rw--ok': status === 'ok' }">
-    <span v-if="inCart" class="rw__incart">{{ $t('bonus.inCart', { n: inCart }) }}</span>
     <RouterLink class="rw__art" :to="`/products/${product.id}`" :aria-label="product.name">
-      <span ref="art" class="rw__artbox"><ProductArt :kind="product.art" :src="product.image" :alt="product.name" /></span>
+      <span class="rw__artbox"><ProductArt :kind="product.art" :src="product.image" :alt="product.name" /></span>
     </RouterLink>
     <h3 class="rw__name"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <p class="rw__pts"><span aria-hidden="true">🎁</span> {{ $t('bonus.points', { n: points.toLocaleString('en-US') }) }}</p>
     <small v-if="product.price" class="rw__value">{{ $t('bonus.value', { price: money(product.price) }) }}</small>
-    <AppButton v-if="status === 'ok'" block size="sm" :variant="added ? 'light' : 'primary'" @click="get">
-      {{ added ? '✓ ' + $t('bonus.added') : $t('bonus.get') }}
-    </AppButton>
+    <AppButton v-if="status === 'ok'" block size="sm" :disabled="busy" @click="$emit('get', product)">🎟 {{ $t('bonus.get') }}</AppButton>
     <AppButton v-else-if="status === 'guest'" block size="sm" variant="light" :to="{ path: '/login', query: { redirect: '/bonus' } }">{{ $t('bonus.loginToGet') }}</AppButton>
-    <p v-else class="rw__lock">🔒 {{ status === 'max' ? $t('bonus.maxReached', { n: maxQty ?? 10 }) : $t('bonus.lack', { n: (lack ?? 0).toLocaleString('en-US') }) }}</p>
+    <p v-else class="rw__lock">🔒 {{ $t('bonus.lack', { n: (lack ?? 0).toLocaleString('en-US') }) }}</p>
   </article>
 </template>
 
@@ -58,7 +43,6 @@ onUnmounted(() => clearTimeout(timer))
 .rw__value { color:var(--muted); font-size:12px; }
 .rw .btn, .rw__lock { margin-top:auto; }
 .rw__lock { margin-bottom:0; padding:8px; border:1.5px dashed var(--line); border-radius:var(--r-md); color:var(--muted); font-size:12px; font-weight:600; text-align:center; }
-.rw__incart { position:absolute; top:18px; right:18px; z-index:1; padding:4px 9px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:11px; font-weight:800; }
 @media (hover:hover) {
   .rw:hover { transform:translateY(-5px); box-shadow:0 22px 34px -22px rgb(14 26 25 / .5); border-color:var(--yellow); }
   .rw:hover .rw__artbox { transform:scale(1.08) rotate(-3deg); }

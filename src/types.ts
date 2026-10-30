@@ -49,7 +49,11 @@ export interface CustomerLevel {
   segment: Segment; manual: boolean; perks: Perks; orders: number; spent: number
   next: { segment: Segment; ordersLeft: number; spentLeft: number | null } | null
 }
-export interface BonusInfo { available: number; pending: number; history: BonusEntry[]; level?: CustomerLevel }
+/** Обмен баллов на подарок: код показывают продавцу. pending — ждёт выдачи, done — выдан, cancelled — отменён (баллы вернулись). */
+export type RedemptionStatus = 'pending' | 'done' | 'cancelled'
+export interface Redemption { code: string; productId: number; name: string; art: string; image?: string; points: number; status: RedemptionStatus; createdAt: string; closedAt: string | null }
+export interface AdminRedemption extends Redemption { customer: { name: string; phone: string; email: string } | null }
+export interface BonusInfo { available: number; pending: number; history: BonusEntry[]; redemptions?: Redemption[]; level?: CustomerLevel }
 export interface Order {
   id: number; status: string; createdAt: string
   name: string; phone: string; address: string; time: string; payment: string
