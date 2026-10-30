@@ -16,5 +16,6 @@ import LogoMark from './LogoMark.vue'
 .logo__txt { display:flex; flex-direction:column; line-height:1.1; }
 b { font-size:clamp(18px, 1.9vw, 22px); font-weight:800; letter-spacing:-.01em; background:linear-gradient(90deg, #fff 55%, var(--yellow)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 small { margin-top:3px; font-size:11px; color:var(--yellow); }
-@media (max-width:480px) { small { display:none; } .logo__mark { width:38px; height:38px; } }
+@media (max-width:1000px) { small { display:none; } } /* девиз в узкой шапке переносился в три строки */
+@media (max-width:480px) { .logo__mark { width:38px; height:38px; } }
 </style>

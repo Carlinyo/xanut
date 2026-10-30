@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useCart } from '../stores/cart'
 import { useUI } from '../stores/ui'
 import { useCatalog } from '../stores/catalog'
@@ -15,7 +16,7 @@ import ScrollProgress from '../components/atoms/ScrollProgress.vue'
 import BackToTop from '../components/molecules/BackToTop.vue'
 import ConfirmDialog from '../components/molecules/ConfirmDialog.vue'
 
-const cart = useCart(), ui = useUI(), catalog = useCatalog(), auth = useAuth(), bonus = useBonus()
+const cart = useCart(), ui = useUI(), catalog = useCatalog(), auth = useAuth(), bonus = useBonus(), route = useRoute()
 catalog.load()
 // корзина из браузера могла устареть: убрать недоступное и обновить цены, как только пришёл каталог
 watch(() => catalog.ready, (ready) => { if (ready) cart.sync() }, { immediate: true })
@@ -27,7 +28,7 @@ watch(() => auth.user?.id, (id) => (id ? bonus.load() : bonus.reset()), { immedi
   <ScrollProgress />
   <SiteHeader />
   <main>
-    <LoadingState v-if="!catalog.ready" :error="catalog.error" @retry="catalog.load()" />
+    <LoadingState v-if="route.meta.catalog && !catalog.ready" :error="catalog.error" @retry="catalog.load()" />
     <RouterView v-else v-slot="{ Component }">
       <Transition name="page" mode="out-in"><component :is="Component" /></Transition>
     </RouterView>

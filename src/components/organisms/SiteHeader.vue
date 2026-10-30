@@ -27,10 +27,21 @@ function onQuery(v: string) {
 }
 const logout = useLogout() // спрашивает «Выйти?» и после выхода ведёт на главную
 
+// Прокрученная шапка только темнеет и получает тень, высота у неё постоянная. Раньше она сжималась на 10 px:
+// страница от этого съезжала вверх, прокрутка снова оказывалась у порога — и шапка дёргалась туда-обратно
+// (на коротких страницах — без остановки). Включаем с запасом (ниже 16 px), выключаем у самого верха: на границе нет дребезга.
 const scrolled = ref(false)
-const onScroll = () => (scrolled.value = window.scrollY > 8)
+let frame = 0
+const onScroll = () => {
+  cancelAnimationFrame(frame)
+  frame = requestAnimationFrame(() => {
+    const y = window.scrollY
+    if (!scrolled.value && y > 16) scrolled.value = true
+    else if (scrolled.value && y < 4) scrolled.value = false
+  })
+}
 onMounted(() => { onScroll(); window.addEventListener('scroll', onScroll, { passive: true }) })
-onUnmounted(() => window.removeEventListener('scroll', onScroll))
+onUnmounted(() => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll) })
 </script>
 
 <template>
@@ -50,12 +61,11 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
 </template>
 
 <style scoped>
-.top { position:sticky; top:0; z-index:40; background:rgb(14 26 25 / .94); backdrop-filter:blur(12px); color:#fff; transition:box-shadow .3s; }
-.top--scrolled { box-shadow:0 8px 24px -10px rgb(0 0 0 / .6); }
-.top__bar { display:flex; align-items:center; gap:clamp(10px, 2vw, 24px); padding-block:12px; transition:padding .35s var(--ease); }
-.top--scrolled .top__bar { padding-block:7px; }
-.top--scrolled { background:rgb(14 26 25 / .86); }
-.top__search { flex:1; max-width:560px; }
+.top { position:sticky; top:0; z-index:40; background:rgb(14 26 25 / .94); backdrop-filter:blur(12px); color:#fff; transition:box-shadow .3s, background-color .3s; }
+/* высота шапки при прокрутке не меняется — только фон и тень (см. onScroll) */
+.top--scrolled { background:rgb(14 26 25 / .98); box-shadow:0 8px 24px -10px rgb(0 0 0 / .6); }
+.top__bar { display:flex; align-items:center; gap:clamp(10px, 2vw, 24px); padding-block:12px; }
+.top__search { flex:1; min-width:0; max-width:560px; }
 .top__count { position:absolute; top:-4px; right:-4px; }
 .top__bar > :nth-child(3) { margin-left:auto; }
 @media (max-width:700px) {
