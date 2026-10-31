@@ -73,6 +73,8 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       </p>
     </div>
 
+    <p v-if="o.comment" class="tk__comment">💬 {{ o.comment }}</p>
+
     <div class="tk__items">
       <ul>
         <li v-for="(i, n) in o.items" :key="n" :class="{ 'is-bonus': i.kind === 'bonus' }">
@@ -181,4 +183,5 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 @media (max-width:640px) { .tk { grid-template-columns:1fr; grid-template-areas:'head' 'who' 'items' 'act'; padding:14px 14px 16px 20px; gap:12px; }
   .tk__when { align-items:flex-start; text-align:left; } .tk__act { flex-direction:column; align-items:stretch; } .tk__act > .btn { flex:none; width:100%; }
   .tk__hint, .tk__mailres { flex:none; } }
+.tk__comment { margin:0; padding:10px 12px; border-left:4px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); font-size:14px; font-weight:600; line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
 </style>

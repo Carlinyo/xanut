@@ -1,9 +1,22 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { formatSlot, money } from '../../utils/format'
 import { discountLabel } from '../../utils/segments'
-import type { Order } from '../../types'
+import type { Order, OrderReview } from '../../types'
+import ReviewForm from '../molecules/ReviewForm.vue'
+import StarRating from '../atoms/StarRating.vue'
+import AppButton from '../atoms/AppButton.vue'
 
 defineProps<{ orders: Order[] }>()
+const emit = defineEmits<{ reviewed: [id: number, review: OrderReview] }>()
+/** Заказ, у которого открыта форма отзыва. */
+const writing = ref<number | null>(null)
+const thanked = ref<number | null>(null)
+function done(id: number, review: OrderReview) {
+  writing.value = null
+  thanked.value = id
+  emit('reviewed', id, review)
+}
 </script>
 
 <template>
@@ -15,11 +28,21 @@ defineProps<{ orders: Order[] }>()
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
       <small v-if="o.time">🕘 {{ formatSlot(o.time) }}</small>
+      <small v-if="o.comment">💬 {{ o.comment }}</small>
       <small v-if="o.discount" class="orders__disc">🏷 {{ discountLabel(o.segment) }}՝ −{{ money(o.discount) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">
         <span v-if="o.bonus.earned">⭐ {{ $t('bonus.earned', { n: o.bonus.earned.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }} · {{ $t('bonus.state.' + o.bonus.state) }}</span>
         <span v-if="o.bonus.spent">🎁 {{ $t('bonus.spent', { n: o.bonus.spent.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }}</span>
       </small>
+      <div v-if="o.review" class="orders__review">
+        <span class="orders__rtitle">{{ $t('reviews.yours') }} <StarRating :value="o.review.rating" /></span>
+        <q v-if="o.review.text">{{ o.review.text }}</q>
+        <small v-if="thanked === o.id" class="orders__thanks" role="status">✓ {{ $t('reviews.thanks') }}</small>
+      </div>
+      <template v-else-if="o.canReview">
+        <ReviewForm v-if="writing === o.id" :order-id="o.id" @done="done(o.id, $event)" @cancel="writing = null" />
+        <AppButton v-else class="orders__write" size="sm" variant="light" @click="writing = o.id">⭐ {{ $t('reviews.write') }}</AppButton>
+      </template>
     </li>
   </ul>
 </template>
@@ -35,4 +58,9 @@ small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__bonus { display:flex; flex-wrap:wrap; gap:4px 14px; color:#8a5f00; font-weight:600; }
 .orders__bonus.is-available { color:var(--green); }
 .orders__bonus.is-cancelled { text-decoration:line-through; opacity:.7; }
+.orders__review { display:flex; flex-direction:column; gap:4px; margin-top:6px; padding:10px 12px; border-radius:var(--r-md); background:var(--bg); font-size:14px; }
+.orders__rtitle { display:flex; align-items:center; gap:8px; font-weight:600; }
+.orders__review q { overflow-wrap:anywhere; white-space:pre-line; }
+.orders__thanks { color:var(--green); font-weight:700; }
+.orders__write { align-self:flex-start; margin-top:6px; }
 </style>

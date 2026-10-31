@@ -25,7 +25,7 @@ const list = computed(() => {
   if (sort.value === 'asc') return l.sort((a, b) => a.price - b.price)
   if (sort.value === 'desc') return l.sort((a, b) => b.price - a.price)
   if (sort.value === 'disc') return l.sort((a, b) => b.discount - a.discount)
-  return l
+  return l.sort((a, b) => Number(a.inStock === false) - Number(b.inStock === false)) // то, чего нет в наличии, — в конце
 })
 // ключ заставляет сетку анимированно «перестроиться» при смене фильтра
 const gridKey = computed(() => [base.value, cat.value, sort.value, ui.query.trim(), list.value.length].join('|'))

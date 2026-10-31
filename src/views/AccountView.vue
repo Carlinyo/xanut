@@ -6,7 +6,7 @@ import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
 import { nextLevelText, perksText, SEGMENT_ICON } from '../utils/segments'
-import type { Order } from '../types'
+import type { Order, OrderReview } from '../types'
 import ProfileCard from '../components/organisms/ProfileCard.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import OrdersList from '../components/organisms/OrdersList.vue'
@@ -31,6 +31,11 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 const logout = useLogout()
+/** Отзыв отправлен — заказ показывает его вместо кнопки. */
+function reviewed(id: number, review: OrderReview) {
+  const o = orders.value.find((x) => x.id === id)
+  if (o) Object.assign(o, { review, canReview: false })
+}
 // группа покупателя: её акция и сколько осталось до следующей
 const level = computed(() => bonus.level)
 </script>
@@ -61,7 +66,7 @@ const level = computed(() => bonus.level)
         <p v-if="loading" class="muted">{{ $t('state.loading') }}</p>
         <p v-else-if="failed" class="muted">{{ $t('state.error') }}</p>
         <p v-else-if="!orders.length" class="muted">{{ $t('account.noOrders') }}</p>
-        <OrdersList v-else :orders="orders" />
+        <OrdersList v-else :orders="orders" @reviewed="reviewed" />
       </section>
     </template>
   </div>

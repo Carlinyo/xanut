@@ -1,9 +1,18 @@
 export type LinkTo = string | { path: string; query?: Record<string, string | number> }
 
 export interface Category { id: number; name: string; art: string; orderable: boolean }
+/** Цена — за 1 кг или за штуку. */
+export type ProductUnit = 'kg' | 'pc'
 export interface Product {
   id: number; name: string; categoryId: number; price: number; old?: number
+  /** rating и reviews — из отзывов покупателей о заказах с этим товаром (0 — отзывов ещё нет). */
   art: string; image?: string; rating: number; reviews: number; discount: number; orderable: boolean
+  /** Нет в наличии (false) — товар виден, но заказать нельзя. Старый сервер поля не присылает — значит, есть. */
+  inStock?: boolean
+  /** kg — цена за 1 кг, заказ через окно «Խորոված պատվիրել» (вес шагом 0,5 кг); pc — за штуку, сразу в корзину. */
+  unit?: ProductUnit
+  /** Описание для страницы товара (состав порции и т.п.). */
+  description?: string
   /** Можно получить в подарок за столько бонусных баллов. */
   bonusPoints?: number
   /** Товар только за баллы (заведён в админке): в каталоге не показывается, за деньги не продаётся. */
@@ -49,6 +58,16 @@ export interface CustomerLevel {
   segment: Segment; manual: boolean; perks: Perks; orders: number; spent: number
   next: { segment: Segment; ordersLeft: number; spentLeft: number | null } | null
 }
+/** Отзыв о полученном заказе (виден автору в «Мои заказы»). */
+export interface OrderReview { rating: number; text: string; createdAt: string }
+/** Отзыв на сайте: имя и первая буква фамилии, без контактов. */
+export interface PublicReview { author: string; rating: number; text: string; createdAt: string }
+export interface ReviewsSummary { count: number; average: number; reviews: PublicReview[] }
+/** Отзыв в админке: номер заказа и покупатель; hidden — скрыт с сайта. */
+export interface AdminReview {
+  orderId: number; author: string; rating: number; text: string; hidden: boolean; createdAt: string
+  customer: { name: string; email: string; phone: string } | null
+}
 /** Обмен баллов на подарок: код показывают продавцу. pending — ждёт выдачи, done — выдан, cancelled — отменён (баллы вернулись). */
 export type RedemptionStatus = 'pending' | 'done' | 'cancelled'
 export interface Redemption { code: string; productId: number; name: string; art: string; image?: string; points: number; status: RedemptionStatus; createdAt: string; closedAt: string | null }
@@ -64,6 +83,11 @@ export interface Order {
   /** Скидка по акции группы (֏) и группа клиента на момент заказа; у старых заказов полей нет. */
   discount?: number; segment?: string | null
   bonus?: OrderBonus
+  /** Комментарий покупателя к заказу. */
+  comment?: string
+  /** Отзыв покупателя (только в «Мои заказы»); canReview — заказ получен и ещё не оценён. */
+  review?: OrderReview | null
+  canReview?: boolean
   /** Только в ответе на новый заказ: обновлённые данные аккаунта. */
   user?: PublicUser
 }
@@ -71,10 +95,11 @@ export interface Order {
 export interface AdminOrder extends Order { email: string | null; readyEmailAt: string | null; readyEmailError: string | null }
 /** Итог письма «заказ готов»: sent — ушло; test — почта сервера в тестовом режиме (письмо только в логе); failed — не ушло. */
 export interface EmailResult { status: 'sent' | 'test' | 'failed'; to?: string; error?: string }
-/** Товар в админке (раздел «Бонусные товары»). */
+/** Товар в админке (разделы «Կատալոգ» и «Բոնուսային ապրանքներ»). active — виден на сайте; inStock — есть в наличии. */
 export interface AdminProduct {
-  id: number; name: string; categoryId: number; price: number; art: string; image: string | null
-  active: boolean; bonusPoints: number | null; bonusOnly: boolean
+  id: number; name: string; categoryId: number; price: number; oldPrice: number | null; unit: ProductUnit; description: string | null
+  art: string; image: string | null; active: boolean; inStock: boolean; bonusPoints: number | null; bonusOnly: boolean
+  rating: number; reviews: number
 }
 /** Клиент в админке: данные аккаунта, покупки, баллы и группа (назначенная вручную или по покупкам). */
 export interface AdminUser {

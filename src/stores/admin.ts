@@ -1,13 +1,20 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { AdminOrder, AdminProduct, AdminUser, EmailResult, Segment, SegmentSettings } from '../types'
+import type { AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
 /** Новый товар только за баллы. */
 export interface RewardDraft { name: string; bonusPoints: number; price: number; art: string; image?: string }
 export type RewardPatch = Partial<Omit<RewardDraft, 'bonusPoints'>> & { bonusPoints?: number | null }
+/** Новый товар каталога. price — за 1 кг или за штуку (unit); oldPrice — цена до скидки (null — без скидки). */
+export interface ProductDraft {
+  name: string; categoryId: number; price: number; oldPrice: number | null; unit: ProductUnit; description: string
+  art: string; image?: string; inStock: boolean; active: boolean
+}
+/** Изменение товара: любые поля каталога и баллы; image: '' — убрать фото. */
+export type ProductPatch = Partial<ProductDraft> & { bonusPoints?: number | null }
 
 const newestFirst = (a: AdminOrder, b: AdminOrder) => b.createdAt.localeCompare(a.createdAt)
 
@@ -27,6 +34,8 @@ export const useAdmin = defineStore('admin', {
     usersLoaded: false,
     /** Акции групп клиентов и правила групп. */
     segments: null as SegmentSettings | null,
+    reviews: [] as AdminReview[],
+    reviewsLoaded: false,
   }),
   getters: {
     rewards: (s): AdminProduct[] => s.products.filter((p) => p.bonusPoints || p.bonusOnly).sort((a, b) => (a.bonusPoints ?? 0) - (b.bonusPoints ?? 0)),
@@ -97,12 +106,33 @@ export const useAdmin = defineStore('admin', {
     async createReward(d: RewardDraft) {
       this.putProduct(await api<AdminProduct>('/admin/products', { method: 'POST', body: d }))
     },
-    async updateProduct(id: number, patch: RewardPatch) {
-      this.putProduct(await api<AdminProduct>(`/admin/products/${id}`, { method: 'PATCH', body: patch }))
+    /** Новый товар каталога. Сайт (каталог в этой же вкладке) обновляет вызывающий. */
+    async createProduct(d: ProductDraft): Promise<AdminProduct> {
+      const p = await api<AdminProduct>('/admin/products', { method: 'POST', body: d })
+      this.putProduct(p)
+      return p
     },
-    async removeReward(id: number) {
+    async updateProduct(id: number, patch: RewardPatch | ProductPatch): Promise<AdminProduct> {
+      const p = await api<AdminProduct>(`/admin/products/${id}`, { method: 'PATCH', body: patch })
+      this.putProduct(p)
+      return p
+    },
+    /** Удалить товар насовсем (каталога или только за баллы). */
+    async removeProduct(id: number) {
       await api(`/admin/products/${id}`, { method: 'DELETE' })
       this.products = this.products.filter((p) => p.id !== id)
+    },
+    removeReward(id: number) { return this.removeProduct(id) },
+
+    async loadReviews() {
+      this.reviews = await api<AdminReview[]>('/admin/reviews')
+      this.reviewsLoaded = true
+    },
+    /** Скрыть отзыв с сайта или вернуть (скрытый не входит в рейтинг товаров). */
+    async setReviewHidden(orderId: number, hidden: boolean) {
+      const r = await api<AdminReview>(`/admin/reviews/${orderId}`, { method: 'PATCH', body: { hidden } })
+      this.reviews = this.reviews.map((x) => (x.orderId === r.orderId ? r : x))
+      return r
     },
     /** Картинка (data URL) → адрес на сервере. */
     async uploadImage(data: string): Promise<string> {

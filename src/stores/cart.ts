@@ -4,12 +4,15 @@ import { useCatalog } from './catalog'
 import { useBonus } from './bonus'
 import { kebabPrice } from '../utils/kebab'
 import { applyPerks } from '../utils/segments'
-import type { CartItem, KebabSelection, Order, Perks } from '../types'
+import type { CartItem, KebabSelection, Order, Perks, ProductUnit } from '../types'
 
-export interface Addable { id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection; orderable?: boolean }
+export interface Addable {
+  id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection
+  orderable?: boolean; inStock?: boolean; unit?: ProductUnit
+}
 /** delivery — курьер (платно, см. deliveryFee), pickup — самовывоз из магазина (бесплатно, адрес не нужен). */
 export type DeliveryMethod = 'delivery' | 'pickup'
-export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean }
+export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean; comment?: string }
 
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
@@ -79,7 +82,9 @@ export const useCart = defineStore('cart', {
       try { localStorage.setItem(METHOD_KEY, m) } catch { /* выбор живёт до перезагрузки */ }
     },
     add(p: Addable) {
-      if (p.orderable === false) return // витринный товар: заказать нельзя (сервер всё равно отклонит)
+      // витринный товар и товар не в наличии заказать нельзя (сервер всё равно отклонит);
+      // товар «за кг» кладут в корзину через окно шашлыка — с весом, маринадом и добавками
+      if (p.orderable === false || p.inStock === false || p.unit === 'kg') return
       const found = this.items.find((i) => i.id === p.id)
       if (found) found.qty = Math.min(MAX_QTY, found.qty + 1)
       else this.items.push({
@@ -95,12 +100,12 @@ export const useCart = defineStore('cart', {
       if (item.qty <= 0) this.items = this.items.filter((i) => i.id !== id)
       this.save()
     },
-    /** Сверяет корзину с каталогом: убирает то, что больше нельзя заказать (товар скрыт или стал витриной, позиция шашлыка
-     *  убрана из меню), и обновляет цены и названия — корзина могла пролежать в браузере долго.
+    /** Сверяет корзину с каталогом: убирает то, что больше нельзя заказать (товар скрыт, стал витриной или его нет в наличии,
+     *  хоровац для шашлыка убран из меню), и обновляет цены и названия — корзина могла пролежать в браузере долго.
      *  true — что-то было убрано. */
     sync(): boolean {
       const { products, kebab } = useCatalog()
-      const byId = new Map(products.filter((p) => p.orderable).map((p) => [p.id, p]))
+      const byId = new Map(products.filter((p) => p.orderable && p.inStock !== false && p.unit !== 'kg').map((p) => [p.id, p]))
       const before = this.items.length
       this.items = this.items.filter((i) => {
         if (i.kind === 'kebab') {

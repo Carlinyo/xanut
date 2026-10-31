@@ -13,6 +13,7 @@ import InfoPanel from '../components/molecules/InfoPanel.vue'
 import MarqueeStrip from '../components/molecules/MarqueeStrip.vue'
 import DecorSprite from '../components/atoms/DecorSprite.vue'
 import BonusTeaser from '../components/molecules/BonusTeaser.vue'
+import ReviewsSection from '../components/organisms/ReviewsSection.vue'
 
 const ui = useUI(), catalog = useCatalog()
 const offers = computed(() => catalog.shopProducts.filter((p) => p.discount).slice(0, 5))
@@ -20,7 +21,7 @@ const offers = computed(() => catalog.shopProducts.filter((p) => p.discount).sli
 
 <template>
   <div>
-    <HeroBanner @kebab="ui.kebabOpen = true" />
+    <HeroBanner @kebab="ui.openKebab()" />
     <MarqueeStrip :items="$t('marquee')" />
     <section class="wrap section has-decor">
       <DecorSprite side="right" top="-34px" />
@@ -34,6 +35,7 @@ const offers = computed(() => catalog.shopProducts.filter((p) => p.discount).sli
     </section>
     <section class="wrap section"><PromoGrid /></section>
     <section class="wrap section"><BonusTeaser /></section>
+    <ReviewsSection />
     <section class="wrap section"><FeatureStrip /></section>
     <section v-reveal="'blur'" class="wrap section duo has-decor">
       <DecorSprite side="right" bottom="-90px" size="clamp(180px, 17vw, 280px)" :speed="0.1" />

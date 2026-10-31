@@ -22,7 +22,8 @@ const hours = computed(() => catalog.config.bonus?.matureHours ?? 3)
 const nf = (n: number) => n.toLocaleString('en-US')
 const left = computed(() => bonus.available)
 
-function statusOf(p: Product): 'guest' | 'lack' | 'ok' {
+function statusOf(p: Product): 'guest' | 'lack' | 'out' | 'ok' {
+  if (p.inStock === false) return 'out'
   if (!auth.isAuth) return 'guest'
   return (p.bonusPoints ?? 0) <= left.value ? 'ok' : 'lack'
 }
@@ -50,7 +51,7 @@ async function get(p: Product) {
     if (code === 'BONUS_INSUFFICIENT') {
       bonus.available = Number((e as ApiError).details.available ?? 0) // баллов меньше, чем думал сайт — показываем настоящий баланс
       error.value = t('bonus.notEnough', { available: nf(bonus.available) })
-    } else if (code === 'NOT_BONUS') {
+    } else if (code === 'NOT_BONUS' || code === 'OUT_OF_STOCK') {
       error.value = t('bonus.gone')
       void catalog.load(true)
     } else error.value = t(commonErrorKey(e))

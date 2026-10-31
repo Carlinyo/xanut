@@ -24,7 +24,7 @@ import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 
 const emit = defineEmits<{ done: [] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
-const form = reactive({ name: '', phone: '', address: '', slot: '', payment: 'cash' as 'cash' | 'card' })
+const form = reactive({ name: '', phone: '', address: '', slot: '', payment: 'cash' as 'cash' | 'card', comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
 
 // «Мои данные» — имя, телефон и адрес из аккаунта (сохранены при регистрации и прошлых заказах); «Новые данные» — ввести другие
@@ -103,8 +103,8 @@ async function fail(e: unknown) {
     void loadSlots()
     return
   }
-  if (code === 'INVALID_PRODUCT' || code === 'NOT_ORDERABLE' || code === 'INVALID_KEBAB') {
-    // корзина устарела (товар скрыли, меню шашлыка изменилось): обновляем каталог и убираем недоступное
+  if (code === 'INVALID_PRODUCT' || code === 'NOT_ORDERABLE' || code === 'INVALID_KEBAB' || code === 'OUT_OF_STOCK') {
+    // корзина устарела (товар скрыли или он закончился, меню шашлыка изменилось): обновляем каталог и убираем недоступное
     await catalog.load(true)
     cart.sync()
     errors.form = t('cart.changed')
@@ -137,6 +137,7 @@ function summary(): ConfirmOptions {
   ]
   if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
   if (!pickup.value) rows.push({ label: t('cart.delivery'), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
+  if (form.comment.trim()) rows.push({ label: t('checkout.comment'), value: form.comment.trim() })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
   return { icon: '🧾', title: t('confirm.order.title'), text: t('confirm.order.text'), rows, yes: t('confirm.order.yes'), no: t('confirm.order.no') }
 }
@@ -159,7 +160,7 @@ async function submit() {
     if (!(await confirm.ask(summary()))) return
     busy.value = true
     const order = await cart.checkout({
-      ...form, delivery: cart.method, address: pickup.value ? '' : form.address,
+      ...form, delivery: cart.method, address: pickup.value ? '' : form.address, comment: form.comment.trim() || undefined,
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
@@ -203,6 +204,7 @@ async function submit() {
       <option value="cash">{{ $t('checkout.cash') }}</option>
       <option value="card">{{ $t(pickup ? 'checkout.cardPickup' : 'checkout.card') }}</option>
     </FormField>
+    <FormField v-model="form.comment" as="textarea" rows="2" maxlength="300" :label="$t('checkout.comment')" :placeholder="$t('checkout.commentPlaceholder')" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
     <AppButton type="submit" size="lg" block :disabled="busy">{{ busy ? $t('common.sending') : $t('checkout.submit') }}</AppButton>

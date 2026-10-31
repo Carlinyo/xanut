@@ -55,7 +55,7 @@ onUnmounted(() => { cancelAnimationFrame(frame); window.removeEventListener('scr
       </AppButton>
     </div>
     <div class="wrap">
-      <NavLinks :items="items" :city="$t('nav.city')" @action="ui.kebabOpen = true" />
+      <NavLinks :items="items" :city="$t('nav.city')" @action="ui.openKebab()" />
     </div>
   </header>
 </template>

@@ -7,6 +7,7 @@ import Breadcrumbs from '../components/molecules/Breadcrumbs.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import ProductDetail from '../components/organisms/ProductDetail.vue'
 import ProductGrid from '../components/organisms/ProductGrid.vue'
+import ProductReviews from '../components/organisms/ProductReviews.vue'
 import AppButton from '../components/atoms/AppButton.vue'
 
 const route = useRoute(), catalog = useCatalog()
@@ -30,6 +31,7 @@ const crumbs = computed(() => {
     <template v-if="p">
       <Breadcrumbs :items="crumbs" />
       <ProductDetail :key="p.id" :product="p" />
+      <ProductReviews v-if="!p.bonusOnly" :key="'r' + p.id" :product-id="p.id" />
       <section v-if="similar.length" class="section">
         <SectionTitle>{{ $t('sections.similar') }}</SectionTitle>
         <ProductGrid :products="similar" scroll />
