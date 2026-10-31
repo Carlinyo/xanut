@@ -45,10 +45,11 @@ const units = computed(() => [
   { value: 'kg' as ProductUnit, label: t('admin.catalog.form.perKg'), icon: '⚖️' },
   { value: 'pc' as ProductUnit, label: t('admin.catalog.form.perPc'), icon: '🔢' },
 ])
-// как этот товар будут заказывать на сайте
+// как этот товар будут заказывать на сайте: хоровац «за кг» — через окно шашлыка, мясо «за кг» — с весом
 const unitHint = computed(() => (!category.value ? ''
   : !category.value.orderable ? t('admin.catalog.form.unitHintShowcase')
-  : t(form.unit === 'kg' ? 'admin.catalog.form.unitHintKg' : 'admin.catalog.form.unitHintPc')))
+  : form.unit !== 'kg' ? t('admin.catalog.form.unitHintPc')
+  : t(category.value.kebab === false ? 'admin.catalog.form.unitHintKgMeat' : 'admin.catalog.form.unitHintKg')))
 
 function validate(): boolean {
   Object.assign(errors, { name: '', categoryId: '', price: '', oldPrice: '', form: '' })

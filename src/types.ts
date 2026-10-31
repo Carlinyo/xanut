@@ -1,15 +1,20 @@
 export type LinkTo = string | { path: string; query?: Record<string, string | number> }
 
-export interface Category { id: number; name: string; art: string; orderable: boolean }
+/** kebab — хоровац (заказ к часовому окну, «за кг» — через окно шашлыка); false — мясо. Старый сервер поля не присылает:
+ *  тогда заказывать можно было только хоровац. */
+export interface Category { id: number; name: string; art: string; orderable: boolean; kebab?: boolean }
 /** Цена — за 1 кг или за штуку. */
 export type ProductUnit = 'kg' | 'pc'
 export interface Product {
   id: number; name: string; categoryId: number; price: number; old?: number
   /** rating и reviews — из отзывов покупателей о заказах с этим товаром (0 — отзывов ещё нет). */
   art: string; image?: string; rating: number; reviews: number; discount: number; orderable: boolean
+  /** Хоровац (true) или мясо (false) — см. isKebab в utils/kebab.ts: старый сервер поля не присылает. */
+  kebab?: boolean
   /** Нет в наличии (false) — товар виден, но заказать нельзя. Старый сервер поля не присылает — значит, есть. */
   inStock?: boolean
-  /** kg — цена за 1 кг, заказ через окно «Խորոված պատվիրել» (вес шагом 0,5 кг); pc — за штуку, сразу в корзину. */
+  /** kg — цена за 1 кг: хоровац — через окно «Խորոված պատվիրել», мясо — окно выбора веса (шаг 0,5 кг);
+   *  pc — за штуку, сразу в корзину. */
   unit?: ProductUnit
   /** Описание для страницы товара (состав порции и т.п.). */
   description?: string
@@ -20,7 +25,8 @@ export interface Product {
 }
 
 export interface KebabMeat { id: string; name: string; perKg: number }
-export interface KebabExtra { id: string; name: string; price: number }
+/** note — состав добавки (показывается под названием). */
+export interface KebabExtra { id: string; name: string; price: number; note?: string }
 export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[] }
 export interface KebabSelection { meat: string; kg: number; marinade: string; extras: string[]; comment?: string }
 export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number }
@@ -35,7 +41,9 @@ export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otp
   segments?: SegmentSettings }
 
 export interface CartItem {
-  id: number | string; kind: 'product' | 'kebab' | 'bonus'; productId?: number; kebab?: KebabSelection
+  id: number | string; kind: 'product' | 'kebab' | 'meat' | 'bonus'; productId?: number; kebab?: KebabSelection
+  /** Мясо на вес: вес одной упаковки (кг); price — цена этого веса, qty — сколько таких упаковок. */
+  kg?: number
   name: string; price: number; art: string; image?: string; note: string; qty: number
   /** Бонусный товар: цена одной штуки в баллах (price = 0). */
   points?: number
@@ -76,6 +84,8 @@ export interface BonusInfo { available: number; pending: number; history: BonusE
 export interface Order {
   id: number; status: string; createdAt: string
   name: string; phone: string; address: string; time: string; payment: string
+  /** time — начало часового окна; exactTime — точное время (заказ только из мяса). У старых заказов поля нет — окно. */
+  exactTime?: boolean
   /** pickup — самовывоз (address пустой); у старых заказов поля нет — это доставка. */
   delivery?: 'delivery' | 'pickup'
   geo?: { formatted: string; lat: number; lon: number } | null
@@ -111,5 +121,11 @@ export interface AdminUser {
 }
 export type NavItem = { label: string; to: LinkTo } | { label: string; id: string }
 
+/** Часовые окна для заказа с хоровацем: left — свободных мест (0 — окно занято). */
 export interface SlotDay { date: string; slots: { key: string; hour: number; left: number }[] }
-export interface SlotsResponse { today: string; capacity: number; days: SlotDay[] }
+/** Время для заказа только из мяса: с 10:00 до 22:00 с шагом 30 минут, без ограничения мест. */
+export interface TimeDay { date: string; slots: { key: string; time: string }[] }
+/** times — у старого сервера нет. */
+export interface SlotsResponse { today: string; capacity: number; days: SlotDay[]; times?: TimeDay[] }
+/** День в выборе времени (SlotPicker): left не задан — мест сколько угодно. */
+export interface PickerDay { date: string; slots: { key: string; label: string; left?: number }[] }

@@ -2,12 +2,16 @@ import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
 import { useBonus } from './bonus'
-import { kebabPrice } from '../utils/kebab'
+import { t } from '../i18n'
+import { isKebab, isMeat, isValidKg, kebabPrice, weightPrice } from '../utils/kebab'
 import { applyPerks } from '../utils/segments'
 import type { CartItem, KebabSelection, Order, Perks, ProductUnit } from '../types'
 
+/** selection — порция из окна шашлыка; kg (+ productId) — мясо на вес из окна выбора веса; иначе — штучный товар
+ *  (сюда передают и сам товар каталога: его поле kebab — «это хоровац», а не выбор из окна шашлыка). */
 export interface Addable {
-  id: number | string; name: string; price: number; art?: string; image?: string; note?: string; kebab?: KebabSelection
+  id: number | string; name: string; price: number; art?: string; image?: string; note?: string; selection?: KebabSelection
+  kg?: number; productId?: number
   orderable?: boolean; inStock?: boolean; unit?: ProductUnit
 }
 /** delivery — курьер (платно, см. deliveryFee), pickup — самовывоз из магазина (бесплатно, адрес не нужен). */
@@ -17,7 +21,11 @@ export interface CheckoutData { name: string; phone: string; address: string; sl
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
 
-type OrderLine = { type: 'product'; productId: number; qty: number } | ({ type: 'kebab' } & KebabSelection)
+type OrderLine = { type: 'product'; productId: number; qty: number } | { type: 'meat'; productId: number; kg: number; qty: number }
+  | ({ type: 'kebab' } & KebabSelection)
+
+/** Название мяса на вес: «Խոզի փափուկ միս — 1.5 կգ» (как у порции шашлыка и как на сервере). */
+export const weightName = (name: string, kg: number): string => t('kebab.itemName', { meat: name, kg })
 
 const STORAGE_KEY = 'cart'
 const METHOD_KEY = 'cart-delivery'
@@ -28,6 +36,7 @@ function isItem(v: unknown): v is CartItem {
   if (!(typeof i.id === 'number' || typeof i.id === 'string') || typeof i.name !== 'string' || typeof i.price !== 'number') return false
   if (!Number.isInteger(i.qty) || (i.qty as number) < 1) return false
   if (i.kind === 'product') return typeof i.productId === 'number'
+  if (i.kind === 'meat') return typeof i.productId === 'number' && typeof i.kg === 'number'
   // подарки за баллы в корзину больше не кладутся (их обменивают на код) — старые записи отбрасываем
   if (i.kind === 'kebab') return !!i.kebab && typeof i.kebab.meat === 'string' && typeof i.kebab.kg === 'number' && Array.isArray(i.kebab.extras)
   return false
@@ -72,6 +81,17 @@ export const useCart = defineStore('cart', {
     total(): number { return this.subtotal - this.discount + this.delivery },
     /** Сколько баллов принесёт заказ (процент группы от товаров после скидки, без доставки) — окончательно считает сервер. */
     pointsEarned(): number { return this.priced.bonusEarned },
+    /** В корзине только мясо: время — любое с 10:00 до 22:00 с шагом 30 минут. Есть хоровац (порция из окна шашлыка
+     *  или штучный хоровац) — часовое окно с ограниченным числом мест. Так же решает сервер. */
+    exactTime(): boolean {
+      const { products } = useCatalog()
+      const byId = new Map(products.map((p) => [p.id, p]))
+      return this.items.length > 0 && this.items.every((i) => {
+        if (i.kind === 'meat') return true
+        const p = i.kind === 'product' && i.productId !== undefined ? byId.get(i.productId) : undefined
+        return !!p && !isKebab(p)
+      })
+    },
   },
   actions: {
     save() {
@@ -83,12 +103,14 @@ export const useCart = defineStore('cart', {
     },
     add(p: Addable) {
       // витринный товар и товар не в наличии заказать нельзя (сервер всё равно отклонит);
-      // товар «за кг» кладут в корзину через окно шашлыка — с весом, маринадом и добавками
+      // товар «за кг» кладут в корзину с весом: хоровац — через окно шашлыка, мясо — через окно выбора веса (p.kg)
       if (p.orderable === false || p.inStock === false || p.unit === 'kg') return
+      const kind: CartItem['kind'] = p.selection ? 'kebab' : p.kg !== undefined ? 'meat' : 'product'
+      // одинаковые позиции складываются: мясо того же веса — ещё одна упаковка (id мяса — «meat-<товар>-<вес>»)
       const found = this.items.find((i) => i.id === p.id)
       if (found) found.qty = Math.min(MAX_QTY, found.qty + 1)
       else this.items.push({
-        id: p.id, kind: p.kebab ? 'kebab' : 'product', productId: typeof p.id === 'number' ? p.id : undefined, kebab: p.kebab,
+        id: p.id, kind, productId: p.productId ?? (typeof p.id === 'number' ? p.id : undefined), kebab: p.selection, kg: p.kg,
         name: p.name, price: p.price, art: p.art || 'basket', image: p.image, note: p.note || '', qty: 1,
       })
       this.save()
@@ -101,17 +123,26 @@ export const useCart = defineStore('cart', {
       this.save()
     },
     /** Сверяет корзину с каталогом: убирает то, что больше нельзя заказать (товар скрыт, стал витриной или его нет в наличии,
-     *  хоровац для шашлыка убран из меню), и обновляет цены и названия — корзина могла пролежать в браузере долго.
+     *  хоровац для шашлыка или добавка убраны из меню), и обновляет цены и названия (у мяса на вес — по новой цене за кг) —
+     *  корзина могла пролежать в браузере долго.
      *  true — что-то было убрано. */
     sync(): boolean {
       const { products, kebab } = useCatalog()
-      const byId = new Map(products.filter((p) => p.orderable && p.inStock !== false && p.unit !== 'kg').map((p) => [p.id, p]))
+      const available = products.filter((p) => p.orderable && p.inStock !== false)
+      const byId = new Map(available.filter((p) => p.unit !== 'kg').map((p) => [p.id, p]))
+      const meatById = new Map(available.filter((p) => p.unit === 'kg' && isMeat(p)).map((p) => [p.id, p]))
       const before = this.items.length
       this.items = this.items.filter((i) => {
         if (i.kind === 'kebab') {
           const price = i.kebab ? kebabPrice(kebab, i.kebab) : null
           if (price === null) return false
           i.price = price
+          return true
+        }
+        if (i.kind === 'meat') {
+          const p = i.productId === undefined ? undefined : meatById.get(i.productId)
+          if (!p || i.kg === undefined || !isValidKg(i.kg)) return false
+          Object.assign(i, { name: weightName(p.name, i.kg), price: weightPrice(p.price, i.kg), art: p.art, image: p.image })
           return true
         }
         if (i.kind === 'bonus') return false
@@ -137,6 +168,7 @@ export const useCart = defineStore('cart', {
           return Array.from({ length: i.qty }, () => ({ type: 'kebab', ...k })) // на сервере каждая порция — отдельная позиция
         }
         if (i.productId === undefined) return []
+        if (i.kind === 'meat') return i.kg === undefined ? [] : [{ type: 'meat', productId: i.productId, kg: i.kg, qty: i.qty }]
         return [{ type: 'product', productId: i.productId, qty: i.qty }]
       })
       return api<Order>('/orders', { method: 'POST', body: { ...form, items, requestId } })

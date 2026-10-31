@@ -10,6 +10,7 @@ import SiteHeader from '../components/organisms/SiteHeader.vue'
 import SiteFooter from '../components/organisms/SiteFooter.vue'
 import CartDrawer from '../components/organisms/CartDrawer.vue'
 import KebabOrderModal from '../components/organisms/KebabOrderModal.vue'
+import MeatOrderModal from '../components/organisms/MeatOrderModal.vue'
 import CartFab from '../components/molecules/CartFab.vue'
 import LoadingState from '../components/molecules/LoadingState.vue'
 import ScrollProgress from '../components/atoms/ScrollProgress.vue'
@@ -38,5 +39,6 @@ watch(() => auth.user?.id, (id) => (id ? bonus.load() : bonus.reset()), { immedi
   <CartFab v-if="cart.count && !ui.cartOpen" :count="cart.count" @click="ui.cartOpen = true" />
   <Transition name="overlay"><CartDrawer v-if="ui.cartOpen" @close="ui.cartOpen = false" /></Transition>
   <Transition name="overlay"><KebabOrderModal v-if="ui.kebabOpen && catalog.ready" @close="ui.kebabOpen = false" /></Transition>
+  <Transition name="overlay"><MeatOrderModal v-if="ui.meatOpen && catalog.ready" @close="ui.meatOpen = false" /></Transition>
   <ConfirmDialog />
 </template>

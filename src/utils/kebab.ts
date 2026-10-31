@@ -1,11 +1,20 @@
-import type { KebabConfig, KebabSelection } from '../types'
+import type { KebabConfig, KebabSelection, Product } from '../types'
 
-// Ограничения шашлыка — те же, что в схеме заказа на сервере (merkhanut-api/src/schemas.ts → kebabLine).
+// Ограничения веса шашлыка и мяса — те же, что в схеме заказа на сервере (merkhanut-api/src/config.ts → WEIGHT).
 export const KEBAB_KG = { min: 0.5, max: 50, step: 0.5 }
 export const KEBAB_COMMENT_MAX = 300
 
 export const isValidKg = (kg: number): boolean =>
   Number.isFinite(kg) && kg >= KEBAB_KG.min && kg <= KEBAB_KG.max && Number.isInteger(kg / KEBAB_KG.step)
+
+/** Цена веса — как на сервере (pricing.ts → weightPrice): цена за кг × кг, до драма. */
+export const weightPrice = (perKg: number, kg: number): number => Math.round(perKg * kg)
+
+/** Хоровац: заказ к часовому окну, «за кг» — через окно шашлыка. Старый сервер поле kebab не присылает —
+ *  тогда заказывать можно было только хоровац. */
+export const isKebab = (p: Pick<Product, 'kebab'>): boolean => p.kebab !== false
+/** Мясо, которое можно заказать: «за кг» — с весом (окно выбора веса), «за штуку» — сразу в корзину. */
+export const isMeat = (p: Pick<Product, 'orderable' | 'kebab'>): boolean => p.orderable && p.kebab === false
 
 /** Цена порции — та же формула, что на сервере (merkhanut-api/src/lib/pricing.ts → priceKebab).
  *  null — такого выбора больше нет в меню (или он нарушает ограничения), сервер его не примет. */
@@ -19,5 +28,5 @@ export function kebabPrice(cfg: KebabConfig, sel: KebabSelection): number | null
     if (!e) return null
     extras += e.price
   }
-  return Math.round(meat.perKg * sel.kg) + extras
+  return weightPrice(meat.perKg, sel.kg) + extras
 }

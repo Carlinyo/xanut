@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { t } from '../../i18n'
-import { hourRange } from '../../utils/format'
-import type { SlotDay } from '../../types'
+import type { PickerDay } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
-const props = defineProps<{ modelValue: string; days: SlotDay[]; today: string; loading: boolean; failed: boolean; label: string; error?: string }>()
+// Выбор времени: часовые окна (заказ с хоровацем, у окна есть left — свободные места) или точное время
+// (заказ только из мяса, left не задан — мест сколько угодно). compact — узкие кнопки для «10:30».
+const props = defineProps<{
+  modelValue: string; days: PickerDay[]; today: string; loading: boolean; failed: boolean; label: string; hint: string; error?: string; compact?: boolean
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: string]; retry: [] }>()
 
 const active = ref('')
 watch(() => props.days, (days) => {
   if (!days.some((d) => d.date === active.value)) active.value = days[0]?.date ?? ''
-  // выбранное окно могло занять другое лицо или оно прошло — сбрасываем выбор
-  const free = days.flatMap((d) => d.slots).some((s) => s.key === props.modelValue && s.left > 0)
+  // выбранное окно могло занять другое лицо, оно прошло или корзина сменила вид времени — сбрасываем выбор
+  const free = days.flatMap((d) => d.slots).some((s) => s.key === props.modelValue && (s.left === undefined || s.left > 0))
   if (props.modelValue && !free) emit('update:modelValue', '')
 }, { immediate: true })
 
@@ -36,20 +39,20 @@ const dayLabel = (date: string): string =>
           {{ dayLabel(d.date) }}
         </button>
       </div>
-      <div class="sp__grid" role="radiogroup" :aria-label="label">
+      <div class="sp__grid" :class="{ 'sp__grid--compact': compact }" role="radiogroup" :aria-label="label">
         <template v-for="d in days" :key="d.date">
           <template v-if="d.date === active">
             <button
               v-for="s in d.slots" :key="s.key" type="button" role="radio" class="sp__slot" :class="{ on: modelValue === s.key }"
               :aria-checked="modelValue === s.key" :disabled="s.left === 0" @click="emit('update:modelValue', s.key)"
             >
-              <b>{{ hourRange(s.hour) }}</b>
+              <b>{{ s.label }}</b>
               <small v-if="s.left === 0">{{ $t('slots.full') }}</small>
             </button>
           </template>
         </template>
       </div>
-      <p class="muted sp__hint">{{ $t('slots.hint') }}</p>
+      <p class="muted sp__hint">{{ hint }}</p>
     </template>
     <small v-if="error" class="sp__err" role="alert">{{ error }}</small>
   </fieldset>
@@ -62,6 +65,7 @@ legend { padding:0 0 8px; font-weight:600; }
 .sp__tab { padding:8px 16px; border:1.5px solid var(--line); border-radius:var(--pill); background:#fff; font-size:13px; font-weight:600; transition:background .2s, border-color .2s; }
 .sp__tab.on { border-color:var(--yellow); background:var(--cream); }
 .sp__grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); gap:8px; }
+.sp__grid--compact { grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); }
 .sp__slot { display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 6px; border:1.5px solid var(--line); border-radius:var(--r-md); background:#fff; font-size:13px; transition:border-color .2s, background .2s, transform .2s var(--ease); }
 .sp__slot:hover:not(:disabled) { border-color:var(--yellow); transform:translateY(-2px); }
 .sp__slot.on { border-color:var(--yellow-lo); background:var(--yellow); }

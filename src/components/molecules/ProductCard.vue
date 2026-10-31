@@ -7,6 +7,7 @@ import StarRating from '../atoms/StarRating.vue'
 import PriceTag from '../atoms/PriceTag.vue'
 import AppButton from '../atoms/AppButton.vue'
 import { flyToCart } from '../../utils/flyToCart'
+import { isKebab } from '../../utils/kebab'
 
 import type { Product } from '../../types'
 
@@ -17,8 +18,9 @@ const added = ref(false)
 const imgBox = ref<HTMLElement | null>(null)
 /** Есть в наличии (старый сервер поля не присылает — значит, есть). */
 const available = computed(() => props.product.inStock !== false)
-/** Хоровац «за кг» — через окно шашлыка (вес, маринад, добавки), штучный — сразу в корзину. */
+/** «За кг»: хоровац — через окно шашлыка (вес, маринад, добавки), мясо — через окно выбора веса; штучный — сразу в корзину. */
 const byWeight = computed(() => props.product.unit === 'kg')
+const kebab = computed(() => isKebab(props.product))
 let timer: ReturnType<typeof setTimeout> | undefined
 function add() {
   emit('add', props.product)
@@ -46,7 +48,8 @@ onUnmounted(() => clearTimeout(timer))
     <StarRating v-if="product.reviews" :value="product.rating" :count="product.reviews" />
     <template v-if="product.orderable">
       <p v-if="!available" class="card__display">⛔ {{ $t('stock.outLong') }}</p>
-      <AppButton v-else-if="byWeight" block size="sm" @click="ui.openKebab(String(product.id))">🍢 {{ $t('kebab.order') }}</AppButton>
+      <AppButton v-else-if="byWeight && kebab" block size="sm" @click="ui.openKebab(String(product.id))">🍢 {{ $t('kebab.order') }}</AppButton>
+      <AppButton v-else-if="byWeight" block size="sm" @click="ui.openMeat(product.id)">⚖️ {{ $t('meat.order') }}</AppButton>
       <AppButton v-else block size="sm" :variant="added ? 'light' : 'primary'" @click="add">
         {{ added ? '✓ ' + $t('common.added') : '🛒 ' + $t('common.add') }}
       </AppButton>

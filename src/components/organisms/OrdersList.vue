@@ -27,7 +27,7 @@ function done(id: number, review: OrderReview) {
       <small>{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
-      <small v-if="o.time">🕘 {{ formatSlot(o.time) }}</small>
+      <small v-if="o.time">🕘 {{ formatSlot(o.time, o.exactTime) }}</small>
       <small v-if="o.comment">💬 {{ o.comment }}</small>
       <small v-if="o.discount" class="orders__disc">🏷 {{ discountLabel(o.segment) }}՝ −{{ money(o.discount) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">

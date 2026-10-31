@@ -58,7 +58,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       </div>
       <div v-if="o.time" class="tk__when">
         <small>{{ pickup ? $t('slots.titlePickup') : $t('slots.title') }}</small>
-        <b>🕘 {{ formatSlot(o.time) }}</b>
+        <b>🕘 {{ formatSlot(o.time, o.exactTime) }}</b>
       </div>
     </header>
 

@@ -35,7 +35,7 @@ function add() {
     price: price.value,
     art: product.value?.art ?? 'kebab',
     image: product.value?.image,
-    kebab: selection.value,
+    selection: selection.value,
     note: [form.marinade, chosen.value.map((e) => e.name).join(', '), selection.value.comment].filter(Boolean).join(' · '),
   })
   emit('close')
@@ -63,7 +63,10 @@ function add() {
         </FormField>
         <fieldset class="kb__extras">
           <legend>{{ $t('kebab.extras') }}</legend>
-          <AppCheckbox v-for="e in kebab.extras" :key="e.id" v-model="form.extras" :value="e.id">{{ e.name }} ({{ $t('kebab.plus', { price: e.price }) }})</AppCheckbox>
+          <AppCheckbox v-for="e in kebab.extras" :key="e.id" v-model="form.extras" :value="e.id">
+            {{ e.name }} ({{ $t('kebab.plus', { price: e.price.toLocaleString('en-US') }) }})
+            <small v-if="e.note" class="kb__note">{{ e.note }}</small>
+          </AppCheckbox>
         </fieldset>
         <FormField v-model="form.comment" as="textarea" rows="2" :maxlength="KEBAB_COMMENT_MAX" :label="$t('kebab.comment')" />
 
@@ -85,6 +88,7 @@ function add() {
 h2 { margin:0; font-size:22px; }
 .kb__extras { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0; padding:0; border:0; }
 legend { margin-bottom:8px; padding:0; font-size:14px; font-weight:600; }
+.kb__note { display:block; margin-top:2px; color:var(--muted); font-size:12px; line-height:1.4; }
 .kb__empty { margin:0; padding:14px 16px; border-radius:var(--r-md); background:var(--bg); color:var(--muted); line-height:1.5; }
 .num-enter-active, .num-leave-active { transition:opacity .15s, transform .2s var(--ease); }
 .num-enter-from { opacity:0; transform:translateY(6px); }

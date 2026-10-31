@@ -7,7 +7,7 @@ import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
 import { useCatalog } from '../../stores/catalog'
 import { useConfirm, type ConfirmOptions } from '../../stores/confirm'
-import { formatSlot, money } from '../../utils/format'
+import { formatSlot, hourRange, money } from '../../utils/format'
 import { discountLabel } from '../../utils/segments'
 import { rules, serverFieldErrors } from '../../validators'
 import { checkPhone, formatPhone } from '../../utils/phone'
@@ -21,6 +21,7 @@ import PrivacyNote from '../molecules/PrivacyNote.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
+import type { PickerDay } from '../../types'
 
 const emit = defineEmits<{ done: [] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
@@ -69,6 +70,14 @@ const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSl
 const { state: addrState, formatted: addrFormatted, check: checkAddr } = useAddressCheck(() => form.address)
 
 onMounted(loadSlots) // каждое открытие корзины — свежие данные о занятых окнах
+
+// В корзине только мясо — любое время с 10:00 до 22:00 с шагом 30 минут, без ограничения мест; есть хоровац — часовые
+// окна (не больше 2 заказов в окно). Сменился состав корзины — SlotPicker сам сбросит время, которого больше нет в списке.
+// Старый сервер времени для мяса не присылает — тогда окна.
+const exact = computed(() => cart.exactTime && !!slotData.value?.times)
+const pickerDays = computed<PickerDay[]>(() => (exact.value
+  ? (slotData.value?.times ?? []).map((d) => ({ date: d.date, slots: d.slots.map((s) => ({ key: s.key, label: s.time })) }))
+  : (slotData.value?.days ?? []).map((d) => ({ date: d.date, slots: d.slots.map((s) => ({ key: s.key, label: hourRange(s.hour), left: s.left })) }))))
 
 // Пока заказ отправляется, кнопка заблокирована, а повторные нажатия и Enter игнорируются.
 // requestId одинаков для повторов одной и той же попытки (двойной клик, повтор после обрыва сети),
@@ -131,7 +140,7 @@ function summary(): ConfirmOptions {
     { label: t('confirm.order.who'), value: `${form.name.trim()}, ${p.ok ? formatPhone(p.e164) : form.phone}` },
     { label: t('cart.methodLabel'), value: pickup.value ? `🏪 ${t('cart.pickup')}` : `🚚 ${t('cart.delivery')}` },
     pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') } : { label: t('checkout.address'), value: form.address.trim() },
-    { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot) },
+    { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot, exact.value) },
     { label: t('checkout.payment'), value: form.payment === 'cash' ? t('checkout.cash') : t(pickup.value ? 'checkout.cardPickup' : 'checkout.card') },
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
   ]
@@ -197,7 +206,8 @@ async function submit() {
     <small v-if="!pickup && addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
     <AppToggle v-if="saved && who === 'new'" v-model="saveProfile">{{ $t('checkout.saveProfile') }}</AppToggle>
     <SlotPicker
-      v-model="form.slot" :label="$t(pickup ? 'slots.titlePickup' : 'slots.title')" :days="slotData?.days ?? []" :today="slotData?.today ?? ''"
+      v-model="form.slot" :label="$t(pickup ? 'slots.titlePickup' : 'slots.title')" :days="pickerDays" :today="slotData?.today ?? ''"
+      :hint="$t(exact ? 'slots.hintMeat' : 'slots.hint')" :compact="exact"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
     />
     <FormField v-model="form.payment" as="select" :label="$t('checkout.payment')">
