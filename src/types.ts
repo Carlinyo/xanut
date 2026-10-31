@@ -5,6 +5,8 @@ export type LinkTo = string | { path: string; query?: Record<string, string | nu
 export interface Category { id: number; name: string; art: string; orderable: boolean; kebab?: boolean }
 /** Цена — за 1 кг или за штуку. */
 export type ProductUnit = 'kg' | 'pc'
+/** Вид мяса у хороваца (фильтр и порядок в каталоге) — см. utils/kinds.ts. */
+export type ProductKind = 'pork' | 'beef' | 'lamb' | 'chicken' | 'turkey' | 'fish' | 'rabbit' | 'veg'
 export interface Product {
   id: number; name: string; categoryId: number; price: number; old?: number
   /** rating и reviews — из отзывов покупателей о заказах с этим товаром (0 — отзывов ещё нет). */
@@ -18,6 +20,8 @@ export interface Product {
   unit?: ProductUnit
   /** Описание для страницы товара (состав порции и т.п.). */
   description?: string
+  /** Вид мяса у хороваца; нет — «прочее». */
+  kind?: ProductKind
   /** Можно получить в подарок за столько бонусных баллов. */
   bonusPoints?: number
   /** Товар только за баллы (заведён в админке): в каталоге не показывается, за деньги не продаётся. */
@@ -108,6 +112,7 @@ export interface EmailResult { status: 'sent' | 'test' | 'failed'; to?: string; 
 /** Товар в админке (разделы «Կատալոգ» и «Բոնուսային ապրանքներ»). active — виден на сайте; inStock — есть в наличии. */
 export interface AdminProduct {
   id: number; name: string; categoryId: number; price: number; oldPrice: number | null; unit: ProductUnit; description: string | null
+  kind: ProductKind | null
   art: string; image: string | null; active: boolean; inStock: boolean; bonusPoints: number | null; bonusOnly: boolean
   rating: number; reviews: number
 }

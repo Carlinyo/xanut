@@ -7,7 +7,8 @@ import { useAdmin, type ProductDraft } from '../../stores/admin'
 import { useCatalog } from '../../stores/catalog'
 import { useConfirm } from '../../stores/confirm'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
-import type { AdminProduct, ProductUnit } from '../../types'
+import type { AdminProduct, ProductKind, ProductUnit } from '../../types'
+import { KINDS, KIND_ICON } from '../../utils/kinds'
 import FormField from './FormField.vue'
 import ChoiceToggle from './ChoiceToggle.vue'
 import ImagePicker from './ImagePicker.vue'
@@ -26,6 +27,7 @@ const form = reactive({
   price: p?.price ? String(p.price) : '',
   oldPrice: p?.oldPrice ? String(p.oldPrice) : '',
   description: p?.description ?? '',
+  kind: (p?.kind ?? '') as ProductKind | '',
   art: p?.art ?? 'steak',
   image: p?.image ?? '',
   inStock: p?.inStock ?? true,
@@ -61,7 +63,7 @@ function validate(): boolean {
 }
 const draft = (): ProductDraft => ({
   name: form.name.trim(), categoryId: form.categoryId, price: int(form.price), oldPrice: form.oldPrice.trim() ? int(form.oldPrice) : null,
-  unit: form.unit, description: form.description.trim(), art: form.art, image: form.image, inStock: form.inStock, active: form.active,
+  unit: form.unit, description: form.description.trim(), kind: form.kind || null, art: form.art, image: form.image, inStock: form.inStock, active: form.active,
 })
 
 async function save() {
@@ -119,6 +121,14 @@ async function remove() {
     <div>
       <ChoiceToggle v-model="form.unit" :options="units" :label="$t('admin.catalog.form.unit')" />
       <small v-if="unitHint" class="pf__hint">{{ unitHint }}</small>
+    </div>
+
+    <div v-if="category?.kebab">
+      <FormField v-model="form.kind" as="select" :label="$t('admin.catalog.form.kind')">
+        <option value="">{{ KIND_ICON.other }} {{ $t('catalog.kinds.other') }}</option>
+        <option v-for="k in KINDS" :key="k" :value="k">{{ KIND_ICON[k] }} {{ $t('catalog.kinds.' + k) }}</option>
+      </FormField>
+      <small class="pf__hint">{{ $t('admin.catalog.form.kindHint') }}</small>
     </div>
 
     <div class="pf__grid">

@@ -9,6 +9,7 @@ import { useCatalog } from '../../stores/catalog'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import { money } from '../../utils/format'
 import type { AdminProduct } from '../../types'
+import { KIND_ICON } from '../../utils/kinds'
 import ProductForm from '../molecules/ProductForm.vue'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppToggle from '../atoms/AppToggle.vue'
@@ -158,6 +159,7 @@ async function toggle(p: AdminProduct, field: 'inStock' | 'active', value: boole
             <span class="row__tags">
               <span v-if="!p.active" class="tag is-hidden">{{ $t('admin.catalog.tagHidden') }}</span>
               <span v-if="!p.inStock" class="tag is-out">{{ $t('stock.out') }}</span>
+              <span v-if="p.kind" class="tag is-kind">{{ KIND_ICON[p.kind] }} {{ $t('catalog.kinds.' + p.kind) }}</span>
               <span v-if="p.reviews" class="tag is-rating">★ {{ p.rating.toFixed(1) }} ({{ p.reviews }})</span>
               <span v-if="p.bonusPoints" class="tag is-bonus">🎁 {{ p.bonusPoints.toLocaleString('en-US') }}</span>
             </span>
@@ -207,6 +209,7 @@ async function toggle(p: AdminProduct, field: 'inStock' | 'active', value: boole
 .row__price small { color:var(--muted); font-weight:600; }
 .row__tags { display:flex; flex-wrap:wrap; gap:4px 6px; }
 .tag { padding:1px 8px; border-radius:var(--pill); font-size:11.5px; font-weight:700; }
+.tag.is-kind { background:var(--bg); color:var(--ink); font-weight:600; }
 .tag.is-hidden { background:#eceeed; color:var(--muted); }
 .tag.is-out { background:var(--dark); color:#fff; }
 .tag.is-rating { background:var(--cream); color:#8a5f00; }

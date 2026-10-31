@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductUnit, Segment, SegmentSettings } from '../types'
+import type { AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
@@ -11,6 +11,8 @@ export type RewardPatch = Partial<Omit<RewardDraft, 'bonusPoints'>> & { bonusPoi
 /** Новый товар каталога. price — за 1 кг или за штуку (unit); oldPrice — цена до скидки (null — без скидки). */
 export interface ProductDraft {
   name: string; categoryId: number; price: number; oldPrice: number | null; unit: ProductUnit; description: string
+  /** Вид мяса у хороваца (фильтр в каталоге); null — «прочее». */
+  kind: ProductKind | null
   art: string; image?: string; inStock: boolean; active: boolean
 }
 /** Изменение товара: любые поля каталога и баллы; image: '' — убрать фото. */
