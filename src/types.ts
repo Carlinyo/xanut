@@ -44,7 +44,12 @@ export interface Perks { discount: number; bonusPercent: number; freeDelivery: b
 export interface SegmentRules { regularOrders: number; regularMin: number; vipOrders: number; vipMin: number }
 export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
 export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otpChannels?: Channel[]; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
-  segments?: SegmentSettings }
+  segments?: SegmentSettings
+  /** Круг доставки вокруг магазина (нет у старого сервера). */
+  zone?: DeliveryZone }
+/** Точка на карте (градусы). */
+export interface GeoPoint { lat: number; lon: number }
+export interface DeliveryZone extends GeoPoint { radiusKm: number }
 
 export interface CartItem {
   id: number | string; kind: 'product' | 'kebab' | 'meat' | 'bonus'; productId?: number; kebab?: KebabSelection
@@ -60,6 +65,8 @@ export interface PublicUser {
   twoFactorChannel?: Channel; emailVerified?: boolean; phoneVerified?: boolean
   /** Сохранённый адрес доставки — подставляется при заказе. */
   address?: string | null
+  /** Точка этого адреса на карте; null — адрес только текстом. */
+  addressGeo?: GeoPoint | null
 }
 /** devCode приходит только в тестовом режиме (почта/SMS не настроены на сервере) — чтобы регистрацию можно было пройти. */
 export interface OtpChallenge { challengeId: string; channel: Channel; destination: string; expiresIn: number; resendIn: number; devCode?: string }

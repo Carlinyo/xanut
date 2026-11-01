@@ -14,6 +14,7 @@ import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
+import { GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
 import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
 import SlotPicker from '../molecules/SlotPicker.vue'
@@ -21,12 +22,16 @@ import PrivacyNote from '../molecules/PrivacyNote.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
-import type { PickerDay } from '../../types'
+import AddressMapPicker from './AddressMapPicker.vue'
+import type { GeoPoint, PickerDay } from '../../types'
 
 const emit = defineEmits<{ done: [] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
-const form = reactive({ name: '', phone: '', address: '', slot: '', payment: 'cash' as 'cash' | 'card', comment: '' })
+const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as 'cash' | 'card', comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
+const geoMsg = ref('') // ошибка геолокации или подсказка «допишите адрес»
+const geoErr = ref(false) // geoMsg — ошибка (красным), а не подсказка
+function showGeo(text: string, error = true) { geoMsg.value = text; geoErr.value = error }
 
 // «Мои данные» — имя, телефон и адрес из аккаунта (сохранены при регистрации и прошлых заказах); «Новые данные» — ввести другие
 type Who = 'saved' | 'new'
@@ -38,12 +43,26 @@ const whoOptions = computed(() => [
   { value: 'new' as Who, label: t('checkout.useNew'), icon: '✏️' },
 ])
 const savedHasAddress = computed(() => !!saved.value?.address)
-const fixAddress = ref(false) // сохранённый адрес не прошёл проверку — показываем поле, чтобы поправить
+// поле адреса в «моих данных»: покупатель хочет другой адрес или сохранённый не прошёл проверку
+const editAddress = ref(false)
+
+// Точка доставки на карте (геолокация или выбор на карте) — по ней курьер найдёт место, а текст адреса — описание к ней.
+// Дописали к тексту подъезд или квартиру — точка остаётся; переписали адрес — точка снимается (она про другое место).
+let pointText = ''
+function setPoint(p: GeoPoint | null, text = '') { form.point = p; pointText = text }
+watch(() => form.address, (v) => { if (form.point && !v.includes(pointText)) setPoint(null) })
+
 function fillWho() {
-  fixAddress.value = false
+  editAddress.value = false
+  geoMsg.value = ''
   const u = saved.value
-  if (who.value === 'saved' && u) Object.assign(form, { name: u.name, phone: u.phone, address: u.address ?? '' })
-  else Object.assign(form, { name: '', phone: '', address: '' })
+  if (who.value === 'saved' && u) {
+    Object.assign(form, { name: u.name, phone: u.phone, address: u.address ?? '' })
+    setPoint(u.address ? u.addressGeo ?? null : null, u.address ?? '')
+  } else {
+    Object.assign(form, { name: '', phone: '', address: '' })
+    setPoint(null)
+  }
   errors.name = errors.phone = errors.address = ''
 }
 fillWho()
@@ -56,7 +75,7 @@ watch(pickup, () => { errors.address = '' })
 watch(pickup, (p) => { if (!p) form.payment = 'cash' })
 // поля показываем, когда вводят новые данные; в «моих» — только адрес, если его ещё нет в аккаунте
 const showContact = computed(() => who.value === 'new')
-const showAddress = computed(() => !pickup.value && (who.value === 'new' || !savedHasAddress.value || fixAddress.value))
+const showAddress = computed(() => !pickup.value && (who.value === 'new' || !savedHasAddress.value || editAddress.value))
 const phoneOk = computed(() => checkPhone(form.phone).ok)
 function checkPhoneField() { // проверка, когда покупатель ушёл из поля
   if (!form.phone) return
@@ -66,10 +85,56 @@ function checkPhoneField() { // проверка, когда покупател�
 // ошибка поля исчезает, как только значение исправили
 watch(() => form.phone, () => { if (errors.phone && phoneOk.value) errors.phone = '' })
 watch(() => form.name, () => { if (errors.name && rules.name(form.name) === true) errors.name = '' })
-watch(() => form.address, () => { errors.address = '' }) // прежний результат проверки относится к старому тексту
+watch(() => form.address, () => { errors.address = ''; geoMsg.value = '' }) // прежний результат проверки относится к старому тексту
 watch(() => form.slot, (v) => { if (v) errors.slot = '' })
 const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSlots } = useSlots()
 const { state: addrState, formatted: addrFormatted, check: checkAddr } = useAddressCheck(() => form.address)
+
+// «Моё местоположение» и «Отметить на карте»
+const zone = computed(() => catalog.config.zone)
+const ACCURATE_M = 100 // геолокация точнее — сразу подставляем адрес; грубее (компьютер, Wi‑Fi) — открываем карту, чтобы поправить
+const outOfZone = () => t('map.outOfZone', { km: zone.value?.radiusKm ?? '' })
+const locating = ref(false)
+const map = reactive({ open: false, start: null as GeoPoint | null, accuracy: undefined as number | undefined, note: '' })
+function openMap(start: GeoPoint | null = form.point, accuracy?: number, note = '') {
+  Object.assign(map, { open: true, start, accuracy, note })
+}
+/** Точка выбрана: адрес места — в поле (если геокодер его знает), иначе просим покупателя написать адрес самому. */
+function usePoint(p: GeoPoint, text: string) {
+  if (text) form.address = text
+  setPoint({ lat: p.lat, lon: p.lon }, text)
+  showGeo(text ? '' : t('checkout.pointNoAddress'), false)
+  errors.address = ''
+}
+function onMapPick(p: GeoPoint, text: string) {
+  map.open = false
+  usePoint(p, text)
+}
+async function useMyLocation() {
+  if (locating.value) return
+  geoMsg.value = ''
+  locating.value = true
+  try {
+    const here = await locate()
+    if (here.accuracy > ACCURATE_M) { openMap(here, here.accuracy, t('map.refine')); return }
+    if (!inZone(zone.value, here)) { showGeo(outOfZone()); return }
+    let text = ''
+    try {
+      const r = await reverseAddress(here)
+      if (!r.inZone) { showGeo(outOfZone()); return }
+      text = r.formatted
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) throw e
+      // адрес места не узнали (геокодер или сеть) — точку всё равно ставим, адрес покупатель напишет сам
+    }
+    usePoint(here, text)
+  } catch (e) {
+    if (e instanceof GeoError) showGeo(t(geoErrorKey(e)))
+    else await fail(e)
+  } finally {
+    locating.value = false
+  }
+}
 
 onMounted(loadSlots) // каждое открытие корзины — свежие данные о занятых окнах
 
@@ -90,7 +155,9 @@ watch([form, () => cart.items, () => cart.method], () => { if (!busy.value) requ
 
 function validate(): boolean {
   for (const k of ['name', 'phone', 'address'] as const) { const r = rules[k](form[k]); errors[k] = r === true ? '' : r }
+  if (!errors.address && form.point && !inZone(zone.value, form.point)) errors.address = t('errors.addressOutOfZone')
   if (pickup.value) errors.address = ''
+  if (errors.address && !showAddress.value) editAddress.value = true // ошибка в сохранённом адресе — показываем поле
   errors.slot = form.slot ? '' : t('errors.slot')
   return !errors.name && !errors.phone && !errors.address && !errors.slot
 }
@@ -98,10 +165,10 @@ function validate(): boolean {
 function applyAddress(ok: boolean | null) {
   if (ok === null) return
   errors.address = ok ? '' : addrState.value === 'unavailable' ? t('errors.addressUnavailable') : t('errors.addressInvalid')
-  if (!ok && !showAddress.value) fixAddress.value = true // сохранённый адрес больше не проходит проверку — даём его поправить
+  if (!ok && !showAddress.value) editAddress.value = true // сохранённый адрес больше не проходит проверку — даём его поправить
 }
-async function verifyAddress() { // проверка, когда пользователь закончил вводить адрес
-  if (rules.address(form.address) !== true) return
+async function verifyAddress() { // проверка, когда пользователь закончил вводить адрес (с точкой на карте текст не проверяем)
+  if (form.point || rules.address(form.address) !== true) return
   try { applyAddress(await checkAddr()) } catch (e) { await fail(e) }
 }
 async function fail(e: unknown) {
@@ -136,6 +203,7 @@ async function fail(e: unknown) {
     }
   }
   if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
+  else if (code === 'ADDRESS_OUT_OF_ZONE') { errors.address = t('errors.addressOutOfZone'); editAddress.value = true }
   else if (code === 'ADDRESS_UNAVAILABLE') errors.address = t('errors.addressUnavailable')
   else if (code === 'PHONE_EXISTS') errors.phone = t('auth.phoneExists') // «запомнить» номер, который уже у другого аккаунта
   else if (code === 'TOO_MANY_ACTIVE') errors.form = t('checkout.tooManyActive', { max: Number(err?.details.max ?? 3), phone: t('contact.phone') })
@@ -147,7 +215,8 @@ function summary(): ConfirmOptions {
   const rows: ConfirmOptions['rows'] = [
     { label: t('confirm.order.who'), value: `${form.name.trim()}, ${p.ok ? formatPhone(p.e164) : form.phone}` },
     { label: t('cart.methodLabel'), value: pickup.value ? `🏪 ${t('cart.pickup')}` : `🚚 ${t('cart.delivery')}` },
-    pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') } : { label: t('checkout.address'), value: form.address.trim() },
+    pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') }
+      : { label: t('checkout.address'), value: form.address.trim() + (form.point ? ` · 📌 ${t('checkout.pointShort')}` : '') },
     { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot, exact.value) },
     { label: t('checkout.payment'), value: form.payment === 'cash' || !pickup.value ? t('checkout.cash') : t('checkout.cardPickup') },
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
@@ -167,7 +236,7 @@ async function submit() {
   try {
     // свежие баланс и группа покупателя: цена в окне подтверждения — та же, что посчитает сервер
     await bonus.load()
-    if (!pickup.value) {
+    if (!pickup.value && !form.point) { // точка на карте уже задаёт место — текст геокодером не проверяем
       const ok = await checkAddr()
       applyAddress(ok)
       if (!ok) return
@@ -177,7 +246,8 @@ async function submit() {
     if (!(await confirm.ask(summary()))) return
     busy.value = true
     const order = await cart.checkout({
-      ...form, delivery: cart.method, address: pickup.value ? '' : form.address, comment: form.comment.trim() || undefined, payment: pickup.value ? form.payment : 'cash',
+      ...form, delivery: cart.method, address: pickup.value ? '' : form.address, point: pickup.value ? null : form.point,
+      comment: form.comment.trim() || undefined, payment: pickup.value ? form.payment : 'cash',
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
@@ -197,7 +267,10 @@ async function submit() {
     <div v-if="saved && who === 'saved'" class="co__saved">
       <b>{{ saved.name }}</b>
       <span>📞 {{ formatPhone(saved.phone) }}</span>
-      <span v-if="!pickup && saved.address && !fixAddress">📍 {{ saved.address }}</span>
+      <span v-if="!pickup && saved.address && !editAddress">
+        📍 {{ saved.address }}<template v-if="saved.addressGeo"> · 📌</template>
+        <button type="button" class="co__link" @click="editAddress = true">{{ $t('checkout.changeAddress') }}</button>
+      </span>
       <small v-if="errors.name" class="co__fielderr" role="alert">{{ errors.name }}</small>
       <small v-if="errors.phone" class="co__fielderr" role="alert">{{ errors.phone }}</small>
       <small v-if="!pickup && !saved.address" class="muted">{{ $t('checkout.savedNoAddress') }}</small>
@@ -206,11 +279,24 @@ async function submit() {
       <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" maxlength="80" />
       <PhoneField v-model="form.phone" :label="$t('checkout.phone')" :error="errors.phone" :valid="phoneOk" :hint="$t(pickup ? 'checkout.phoneHintPickup' : 'checkout.phoneHint')" @blur="checkPhoneField" />
     </template>
-    <FormField
-      v-if="showAddress"
-      v-model="form.address" :label="$t('checkout.address')" :error="errors.address" :hint="addrState === 'ok' ? addrFormatted : ''"
-      :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" maxlength="200" @blur="verifyAddress"
-    />
+    <template v-if="showAddress">
+      <FormField
+        v-model="form.address" :label="$t('checkout.address')" :error="errors.address" :hint="addrState === 'ok' ? addrFormatted : ''"
+        :placeholder="$t('checkout.addressPlaceholder')" autocomplete="street-address" maxlength="200" @blur="verifyAddress"
+      />
+      <div class="co__geo">
+        <button type="button" class="co__geo-btn" :disabled="locating" @click="useMyLocation">
+          <span aria-hidden="true">🎯</span>{{ $t(locating ? 'checkout.locating' : 'checkout.myLocation') }}
+        </button>
+        <button type="button" class="co__geo-btn" @click="openMap()"><span aria-hidden="true">🗺️</span>{{ $t('checkout.pickOnMap') }}</button>
+      </div>
+      <p v-if="form.point" class="co__point">
+        <span>📌 {{ $t('checkout.pointSet') }}</span>
+        <button type="button" class="co__link" @click="openMap()">{{ $t('checkout.pointEdit') }}</button>
+        <button type="button" class="co__x" :aria-label="$t('checkout.pointRemove')" :title="$t('checkout.pointRemove')" @click="setPoint(null)">✕</button>
+      </p>
+      <small v-if="geoMsg" class="co__geo-msg" :class="{ err: geoErr }" :role="geoErr ? 'alert' : 'status'">{{ geoMsg }}</small>
+    </template>
     <small v-if="!pickup && addrState === 'checking'" class="co__checking">{{ $t('checkout.addressChecking') }}</small>
     <AppToggle v-if="saved && who === 'new'" v-model="saveProfile">{{ $t('checkout.saveProfile') }}</AppToggle>
     <SlotPicker
@@ -230,6 +316,14 @@ async function submit() {
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
     <AppButton type="submit" size="lg" block :disabled="busy">{{ busy ? $t('common.sending') : $t('checkout.submit') }}</AppButton>
+    <Teleport to="body">
+      <Transition name="overlay">
+        <AddressMapPicker
+          v-if="map.open" :start="map.start" :accuracy="map.accuracy" :zone="zone" :note="map.note"
+          @pick="onMapPick" @close="map.open = false"
+        />
+      </Transition>
+    </Teleport>
   </form>
 </template>
 
@@ -240,6 +334,18 @@ async function submit() {
 .co__saved .muted { font-size:12px; }
 .co__fielderr { color:var(--red); font-size:12px; }
 .co__checking { margin-top:-6px; color:var(--muted); font-size:12px; }
+.co__link { padding:0; border:0; background:none; color:var(--yellow-lo); font:inherit; font-size:13px; font-weight:700; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.co__saved .co__link { margin-left:8px; }
+.co__geo { display:flex; flex-wrap:wrap; gap:8px; margin-top:-4px; }
+.co__geo-btn { display:inline-flex; flex:1 1 180px; white-space:nowrap; align-items:center; justify-content:center; gap:6px; padding:9px 12px; border:1.5px solid var(--line); border-radius:var(--r-md); background:#fff; color:var(--ink); font:inherit; font-size:13px; font-weight:700; cursor:pointer; transition:border-color var(--t), background var(--t); }
+.co__geo-btn:hover:not(:disabled) { border-color:var(--yellow); background:var(--cream); }
+.co__geo-btn:disabled { opacity:.6; cursor:progress; }
+.co__point { display:flex; align-items:center; gap:10px; margin:-4px 0 0; padding:6px 6px 6px 12px; border:1.5px solid var(--yellow-lo); border-radius:var(--r-md); background:var(--cream); font-size:13px; font-weight:600; }
+.co__point span { flex:1; }
+.co__x { display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:50%; background:transparent; color:var(--muted); cursor:pointer; }
+.co__x:hover { background:var(--line); color:var(--ink); }
+.co__geo-msg { margin-top:-4px; color:var(--muted); font-size:12px; line-height:1.45; }
+.co__geo-msg.err { color:var(--red); }
 .co__pay { display:flex; flex-direction:column; gap:6px; font-size:14px; }
 .co__pay-label { font-weight:600; }
 .co__pay-cash { display:flex; flex-direction:column; gap:2px; margin:0; padding:10px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--bg); font-weight:700; }

@@ -6,7 +6,7 @@ import { useBonus } from './bonus'
 import { isKebab, isMeat, isValidKg, kebabPrice, weightPrice } from '../utils/kebab'
 import { applyPerks } from '../utils/segments'
 import { uuid } from '../utils/id'
-import type { CartItem, KebabOptions, KebabSelection, Order, Perks, ProductUnit } from '../types'
+import type { CartItem, GeoPoint, KebabOptions, KebabSelection, Order, Perks, ProductUnit } from '../types'
 
 /** selection — порция из окна шашлыка; kg (+ productId) — мясо на вес из окна выбора веса; иначе — штучный товар
  *  (сюда передают и сам товар каталога: его поле kebab — «это хоровац», а не выбор из окна шашлыка). */
@@ -17,7 +17,8 @@ export interface Addable {
 }
 /** delivery — курьер (платно, см. deliveryFee), pickup — самовывоз из магазина (бесплатно, адрес не нужен). */
 export type DeliveryMethod = 'delivery' | 'pickup'
-export interface CheckoutData { name: string; phone: string; address: string; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean; comment?: string }
+/** point — точка доставки на карте (тогда address — описание для курьера). */
+export interface CheckoutData { name: string; phone: string; address: string; point?: GeoPoint | null; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean; comment?: string }
 
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
