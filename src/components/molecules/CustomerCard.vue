@@ -1,12 +1,17 @@
 <script setup lang="ts">
 // Клиент в админке: контакты, покупки, баллы и группа. Группу можно назначить вручную или вернуть «по покупкам».
-import { computed } from 'vue'
+// «Պատվերներ» раскрывает его заказы: что, сколько и когда купил.
+import { computed, ref } from 'vue'
 import { t } from '../../i18n'
 import { money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
 import { SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
 import type { AdminUser, Segment } from '../../types'
 import AppInput from '../atoms/AppInput.vue'
+import CustomerOrders from './CustomerOrders.vue'
+
+/** Список заказов клиента открыт (загружается при первом открытии). */
+const showOrders = ref(false)
 
 const props = defineProps<{ user: AdminUser; busy?: boolean }>()
 const emit = defineEmits<{ segment: [value: Segment | null] }>()
@@ -54,6 +59,9 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         </div>
         <div><dt>{{ $t('admin.customers.since') }}</dt><dd>{{ day(u.createdAt) }}</dd></div>
       </dl>
+      <button v-if="u.orders || u.cancelled" type="button" class="cu__more" :aria-expanded="showOrders" @click="showOrders = !showOrders">
+        📦 {{ $t(showOrders ? 'admin.customers.hideOrders' : 'admin.customers.showOrders') }} <span aria-hidden="true">{{ showOrders ? '▴' : '▾' }}</span>
+      </button>
     </div>
     <label class="cu__pick">
       <span>{{ $t('admin.customers.group') }}</span>
@@ -62,6 +70,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
       </AppInput>
     </label>
+    <CustomerOrders v-if="showOrders" :user-id="u.id" class="cu__orders" />
   </article>
 </template>
 
@@ -88,5 +97,8 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
 .cu__stats small { color:var(--muted); font-weight:500; }
 .cu__pick { flex:0 1 250px; display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; }
 .cu__pick :deep(.field) { padding:9px 12px; }
+.cu__more { align-self:flex-start; padding:6px 12px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:#5c4100; font-size:13px; font-weight:700; transition:background .2s; }
+.cu__more:hover { background:var(--yellow); }
+.cu__orders { flex-basis:100%; min-width:0; }
 @media (max-width:640px) { .cu { padding:12px 14px 14px 20px; } .cu__pick { flex-basis:100%; } }
 </style>

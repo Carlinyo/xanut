@@ -106,6 +106,10 @@ export const useAdmin = defineStore('admin', {
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
     },
+    /** Заказы одного клиента (карточка клиента), новые первыми. archived — сколько его заказов уже только в файлах отчётов. */
+    async loadUserOrders(id: string): Promise<{ orders: AdminOrder[]; archived: number }> {
+      return api<{ orders: AdminOrder[]; archived: number }>(`/admin/users/${id}/orders`)
+    },
     /** Сохранить акции групп. Новые пороги меняют группы клиентов — список загружается заново. */
     async saveSegments(value: SegmentSettings) {
       const saved = await api<SegmentSettings>('/admin/segments', { method: 'PUT', body: value })
