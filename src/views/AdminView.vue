@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAdmin } from '../stores/admin'
+import { t } from '../i18n'
 import AdminOrders from '../components/organisms/AdminOrders.vue'
 import AdminCustomers from '../components/organisms/AdminCustomers.vue'
 import AdminFeedback from '../components/organisms/AdminFeedback.vue'
@@ -10,16 +11,29 @@ import AdminCodes from '../components/organisms/AdminCodes.vue'
 import AdminCatalog from '../components/organisms/AdminCatalog.vue'
 import AdminCategories from '../components/organisms/AdminCategories.vue'
 import AdminReviews from '../components/organisms/AdminReviews.vue'
+import AdminReports from '../components/organisms/AdminReports.vue'
 
 // Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
 const route = useRoute(), router = useRouter(), admin = useAdmin()
-type Tab = 'orders' | 'customers' | 'catalog' | 'categories' | 'rewards' | 'codes' | 'reviews' | 'feedback'
-const TABS: Tab[] = ['orders', 'customers', 'catalog', 'categories', 'rewards', 'codes', 'reviews', 'feedback']
+type Tab = 'orders' | 'customers' | 'catalog' | 'categories' | 'rewards' | 'codes' | 'reviews' | 'feedback' | 'reports'
+const TABS: Tab[] = ['orders', 'customers', 'catalog', 'categories', 'rewards', 'codes', 'reviews', 'feedback', 'reports']
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
-const open = (t: Tab) => router.replace({ query: t === 'orders' ? {} : { tab: t } })
+const open = (next: Tab) => router.replace({ query: next === 'orders' ? {} : { tab: next } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
-// неразобранные жалобы и предложения — меткой на вкладке, даже если она не открыта
-onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}) })
+// неразобранные жалобы и предложения и дела по отчётам — меткой на вкладке, даже если она не открыта
+onMounted(() => {
+  if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {})
+  if (!admin.exports) admin.loadExports().catch(() => {})
+})
+// закончился месяц или неделя, а файл не скачан (или месяц не очищен) — напоминание над любой вкладкой, кроме отчётов
+const reminder = computed(() => {
+  const ex = admin.exports
+  if (!ex || tab.value === 'reports') return null
+  const m = ex.months.find((r) => r.todo)
+  if (m) return t(m.todo === 'purge' ? 'admin.reports.banner.purge' : 'admin.reports.banner.download', { label: m.label })
+  const w = ex.weeks.find((r) => r.todo)
+  return w ? t('admin.reports.banner.week', { label: w.label }) : null
+})
 </script>
 
 <template>
@@ -51,7 +65,14 @@ onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'feedback' }" :aria-selected="tab === 'feedback'" @click="open('feedback')">
           💬 {{ $t('admin.tabs.feedback') }}<span v-if="admin.feedbackNew" class="adm__count">{{ admin.feedbackNew }}</span>
         </button>
+        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'reports' }" :aria-selected="tab === 'reports'" @click="open('reports')">
+          📊 {{ $t('admin.tabs.reports') }}<span v-if="admin.exports?.todo" class="adm__count">{{ admin.exports.todo }}</span>
+        </button>
       </div>
+    </div>
+    <div v-if="reminder" class="adm__remind" role="status">
+      <span>📊 {{ reminder }}</span>
+      <button type="button" class="adm__remind-go" @click="open('reports')">{{ $t('admin.reports.banner.open') }} →</button>
     </div>
     <!-- заказы не выгружаем при переключении вкладок: новые заказы видно и слышно и на других вкладках админки -->
     <AdminOrders v-show="tab === 'orders'" role="tabpanel" />
@@ -62,6 +83,7 @@ onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}
     <AdminCatalog v-if="tab === 'catalog'" role="tabpanel" />
     <AdminCategories v-if="tab === 'categories'" role="tabpanel" />
     <AdminReviews v-if="tab === 'reviews'" role="tabpanel" />
+    <AdminReports v-if="tab === 'reports'" role="tabpanel" />
   </div>
 </template>
 
@@ -77,8 +99,13 @@ onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}
 .adm__count.is-new { animation:ping 1.2s var(--ease) infinite; }
 @keyframes ping { 0%, 100% { box-shadow:0 0 0 0 rgb(229 52 43 / .6); } 60% { box-shadow:0 0 0 7px rgb(229 52 43 / 0); } }
 @media (prefers-reduced-motion:reduce) { .adm__count.is-new { animation:none; outline:2px solid var(--yellow); } }
+/* напоминание об отчёте: жёлтая полоса над вкладкой */
+.adm__remind { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin:-6px 0 18px; padding:12px 16px;
+  border:1.5px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); color:#5c4100; font-size:14px; font-weight:600; line-height:1.45; }
+.adm__remind-go { flex:none; padding:8px 14px; border:0; border-radius:var(--pill); background:var(--dark); color:#fff; font-size:13px; font-weight:700; transition:background .2s; }
+.adm__remind-go:hover { background:var(--dark-2); }
 @media (max-width:1100px) { .adm__tabs { border-radius:var(--r-lg); } }
 @media (max-width:640px) { .adm__tabs { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; } .adm__tab { justify-content:center; gap:5px; padding:10px 6px; font-size:12.5px; }
-  /* семь вкладок в три колонки: последняя — на всю строку */
+  /* вкладки в три колонки: если последняя осталась в строке одна — на всю строку */
   .adm__tab:last-child:nth-child(3n + 1) { grid-column:1 / -1; } }
 </style>

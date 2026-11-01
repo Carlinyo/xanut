@@ -97,7 +97,11 @@ export interface AdminReview {
 export type RedemptionStatus = 'pending' | 'done' | 'cancelled'
 export interface Redemption { code: string; productId: number; name: string; art: string; image?: string; points: number; status: RedemptionStatus; createdAt: string; closedAt: string | null }
 export interface AdminRedemption extends Redemption { customer: { name: string; phone: string; email: string } | null }
-export interface BonusInfo { available: number; pending: number; history: BonusEntry[]; redemptions?: Redemption[]; level?: CustomerLevel }
+export interface BonusInfo {
+  available: number; pending: number; history: BonusEntry[]; redemptions?: Redemption[]; level?: CustomerLevel
+  /** Баллы прежних заказов, которые магазин убрал из базы после выгрузки месяца: в истории их нет, а в балансе они есть. */
+  archived?: { earned: number; spent: number } | null
+}
 export interface Order {
   id: number; status: string; createdAt: string
   name: string; phone: string; address: string; time: string; payment: string
@@ -141,6 +145,19 @@ export interface AdminUser {
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
   bonus: { available: number; pending: number }
 }
+/** Отчёт за неделю или месяц (раздел «Հաշվետվություններ»). final — закрытых заказов (их можно удалить после выгрузки),
+ *  open — незакрытых (в пути, не оплачены). stale — после выгрузки закрылись новые заказы: файл надо скачать заново.
+ *  todo — что пора сделать: download — скачать файл, purge — удалить закрытые заказы закончившегося месяца. */
+export interface ExportRow {
+  id: string; kind: 'week' | 'month'; key: string; first: string; last: string; label: string
+  current: boolean; closed: boolean
+  orders: number; final: number; open: number
+  downloadedAt: string | null; downloadedBy: string | null; stale: boolean
+  purgedAt: string | null; purged: number
+  todo: 'download' | 'purge' | null
+}
+/** todo — сколько всего дел (метка на вкладке). */
+export interface ExportsOverview { today: string; weeks: ExportRow[]; months: ExportRow[]; todo: number }
 /** Жалоба или предложение с сайта. */
 export type FeedbackType = 'complaint' | 'suggestion'
 /** Запись в админке: контакты для ответа (у вошедшего — из аккаунта), заказ, «разобрано». */

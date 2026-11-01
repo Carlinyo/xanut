@@ -5,7 +5,11 @@ import type { BonusEntry, BonusInfo, CustomerLevel, Perks, Product, Redemption }
 
 // Бонусные баллы и группа покупателя (новый, постоянный, VIP). Баланс и группу считает сервер (по заказам), здесь — только показ.
 export const useBonus = defineStore('bonus', {
-  state: () => ({ available: 0, pending: 0, history: [] as BonusEntry[], redemptions: [] as Redemption[], level: null as CustomerLevel | null, loaded: false }),
+  state: () => ({
+    available: 0, pending: 0, history: [] as BonusEntry[], redemptions: [] as Redemption[], level: null as CustomerLevel | null, loaded: false,
+    /** Баллы прежних заказов, удалённых магазином после выгрузки месяца (в истории их нет). */
+    archived: null as BonusInfo['archived'],
+  }),
   getters: {
     /** Бонусные товары — из каталога (товары с ценой в баллах), дешёвые первыми. */
     rewards: (): Product[] => useCatalog().products.filter((p) => p.bonusPoints).sort((a, b) => a.bonusPoints! - b.bonusPoints!),
@@ -21,7 +25,7 @@ export const useBonus = defineStore('bonus', {
     async load() {
       try {
         const r = await api<BonusInfo>('/bonus')
-        Object.assign(this, r, { redemptions: r.redemptions ?? [], level: r.level ?? null, loaded: true })
+        Object.assign(this, r, { redemptions: r.redemptions ?? [], level: r.level ?? null, archived: r.archived ?? null, loaded: true })
       } catch { /* гость или нет связи — покажем без баланса */ }
     },
     /** Обменять баллы на подарок: сервер списывает баллы и выдаёт код, который покупатель показывает продавцу. */
@@ -43,6 +47,6 @@ export const useBonus = defineStore('bonus', {
       if (this.level) this.level.notice = null
       try { await api('/bonus/notice/seen', { method: 'POST' }) } catch { /* не вышло — покажется снова при следующем открытии */ }
     },
-    reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, loaded: false }) },
+    reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, archived: null, loaded: false }) },
   },
 })

@@ -229,7 +229,7 @@ function reviewed(id: number, review: OrderReview) {
 
     <section v-if="auth.isAuth" class="section">
       <SectionTitle>{{ $t('bonus.historyTitle') }}</SectionTitle>
-      <p v-if="!bonus.history.length" class="muted">{{ $t('bonus.historyEmpty') }}</p>
+      <p v-if="!bonus.history.length && !bonus.archived" class="muted">{{ $t('bonus.historyEmpty') }}</p>
       <ul v-else class="hist">
         <li v-for="h in bonus.history" :key="h.orderId" :class="`is-${h.state}`">
           <div class="hist__main">
@@ -238,6 +238,15 @@ function reviewed(id: number, review: OrderReview) {
           </div>
           <span v-if="h.earned" class="hist__plus">{{ $t('bonus.earned', { n: nf(h.earned) }) }}</span>
           <span v-if="h.spent" class="hist__minus">{{ $t('bonus.spent', { n: nf(h.spent) }) }}</span>
+        </li>
+        <!-- прежние заказы магазин убрал из базы после выгрузки месяца: их баллы — одной строкой -->
+        <li v-if="bonus.archived" class="is-available">
+          <div class="hist__main">
+            <b>{{ $t('bonus.archived') }}</b>
+            <small>{{ $t('bonus.state.available') }}</small>
+          </div>
+          <span v-if="bonus.archived.earned" class="hist__plus">{{ $t('bonus.earned', { n: nf(bonus.archived.earned) }) }}</span>
+          <span v-if="bonus.archived.spent" class="hist__minus">{{ $t('bonus.spent', { n: nf(bonus.archived.spent) }) }}</span>
         </li>
       </ul>
     </section>

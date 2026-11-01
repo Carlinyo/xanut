@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { AdminCategory, AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
+import { saveBase64, XLSX_MIME } from '../utils/download'
+import type { AdminCategory, AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ExportsOverview, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
@@ -46,6 +47,8 @@ export const useAdmin = defineStore('admin', {
     /** Жалобы и предложения с сайта, новые первыми. */
     feedback: [] as AdminFeedback[],
     feedbackLoaded: false,
+    /** Отчёты за недели и месяцы: что скачано, что очищено, что пора сделать (null — ещё не загружены). */
+    exports: null as ExportsOverview | null,
   }),
   getters: {
     /** Сколько жалоб и предложений ещё не разобрано (метка на вкладке). */
@@ -191,6 +194,26 @@ export const useAdmin = defineStore('admin', {
       this.reviews = this.reviews.map((x) => (x.orderId === r.orderId ? r : x))
       return r
     },
+    // ---------- отчёты: Excel за неделю и месяц, очистка закончившегося месяца ----------
+    async loadExports() {
+      this.exports = await api<ExportsOverview>('/admin/exports')
+    },
+    /** Скачать файл отчёта и сообщить серверу, что он сохранён: только после этого месяц можно очистить. Возвращает имя файла. */
+    async downloadExport(id: string): Promise<string> {
+      const f = await api<{ name: string; hash: string; data: string }>(`/admin/exports/${id}/file`, { method: 'POST', timeout: 60_000 })
+      saveBase64(f.name, f.data, XLSX_MIME)
+      this.exports = await api<ExportsOverview>(`/admin/exports/${id}/saved`, { method: 'POST', body: { hash: f.hash } })
+      return f.name
+    },
+    /** Удалить закрытые заказы закончившегося (и скачанного) месяца. kept — изменились во время удаления и остались. */
+    async purgeExport(id: string): Promise<{ deleted: number; kept: number }> {
+      const { deleted, kept, ...overview } = await api<ExportsOverview & { deleted: number; kept: number }>(`/admin/exports/${id}/purge`, { method: 'POST', timeout: 60_000 })
+      this.exports = overview
+      // удалённые заказы не должны остаться в списке «Պատվերներ» (он не перезагружается при переключении вкладок)
+      if (deleted && this.ordersLoaded) void this.loadOrders().catch(() => {})
+      return { deleted, kept }
+    },
+
     /** Картинка (data URL) → адрес на сервере. */
     async uploadImage(data: string): Promise<string> {
       return (await api<{ url: string }>('/admin/images', { method: 'POST', body: { data }, timeout: 60_000 })).url
