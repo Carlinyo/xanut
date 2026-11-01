@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import CategoryTile from '../molecules/CategoryTile.vue'
 import type { Category } from '../../types'
+import { categorySketchUrl } from '../../utils/art'
 
 defineProps<{ categories: Category[] }>()
 </script>
 
 <template>
   <div v-reveal.stagger="'zoom'" class="cats">
-    <CategoryTile v-for="c in categories" :key="c.id" :name="c.name" :art="c.art" :orderable="c.orderable" :to="{ path: '/products', query: { cat: c.id } }" />
+    <CategoryTile v-for="c in categories" :key="c.id" :name="c.name" :art="c.art" :src="categorySketchUrl(c.id, c.art)" :orderable="c.orderable" :to="{ path: '/products', query: { cat: c.id } }" />
   </div>
 </template>
 
