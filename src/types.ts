@@ -38,8 +38,8 @@ export interface BonusConfig { percent: number; rate: number; matureHours: numbe
 export type Segment = 'new' | 'regular' | 'vip'
 /** Акция группы: скидка на товары (%), баллы с покупки (%), бесплатная доставка. */
 export interface Perks { discount: number; bonusPercent: number; freeDelivery: boolean }
-/** С какого числа заказов клиент постоянный и VIP (или с какой суммы покупок — VIP). */
-export interface SegmentRules { regularOrders: number; vipOrders: number; vipSpent: number }
+/** Группа на месяц: сколько полученных заказов этого месяца нужно и от какой суммы каждый (товары без доставки). */
+export interface SegmentRules { regularOrders: number; regularMin: number; vipOrders: number; vipMin: number }
 export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
 export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otpChannels?: Channel[]; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
   segments?: SegmentSettings }
@@ -68,10 +68,18 @@ export interface KebabOptions { marinade?: string; extras?: string[]; comment?: 
 export type BonusState = 'pending' | 'available' | 'cancelled'
 export interface OrderBonus { earned: number; spent: number; state: BonusState; availableAt: string }
 export interface BonusEntry { orderId: number; createdAt: string; earned: number; spent: number; state: BonusState; availableAt: string }
-/** Группа покупателя: manual — назначена магазином; next — сколько осталось до следующей группы (null — выше некуда или назначена). */
+/** Засчитан ли заказ месяца: vip — в VIP (и в постоянного), regular — в постоянного; small — сумма меньше порога,
+ *  pending — ещё не получен, cancelled — отменён. */
+export type OrderMark = 'vip' | 'regular' | 'small' | 'pending' | 'cancelled'
+/** Группа покупателя на этот месяц: manual — назначена магазином (без срока); next — сколько заказов (от min ֏) осталось
+ *  до следующей группы (null — выше некуда или назначена); month — до какого дня действует группа, сколько дней осталось
+ *  и сколько заказов месяца засчитано; marks — заказы месяца; notice — «вы стали …», пока покупатель не закрыл сообщение. */
 export interface CustomerLevel {
   segment: Segment; manual: boolean; perks: Perks; orders: number; spent: number
-  next: { segment: Segment; ordersLeft: number; spentLeft: number | null } | null
+  next: { segment: Segment; ordersLeft: number; min: number } | null
+  month: { until: string; daysLeft: number; regular: number; vip: number }
+  marks: { id: number; mark: OrderMark }[]
+  notice: { segment: Segment } | null
 }
 /** Отзыв о полученном заказе (виден автору в «Мои заказы»). */
 export interface OrderReview { rating: number; text: string; createdAt: string }
@@ -124,6 +132,8 @@ export interface AdminUser {
   id: string; name: string; email: string; phone: string; address: string | null; role: string; createdAt: string
   emailVerified: boolean; phoneVerified: boolean
   segment: Segment; segmentManual: boolean; autoSegment: Segment
+  /** Засчитано заказов в этом месяце: в постоянного и в VIP. */
+  month?: { regular: number; vip: number }
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
   bonus: { available: number; pending: number }
 }

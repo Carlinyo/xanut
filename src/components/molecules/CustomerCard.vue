@@ -42,6 +42,10 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
           <dt>{{ $t('admin.customers.orders') }}</dt>
           <dd>{{ u.orders }}<small v-if="u.cancelled"> · {{ $t('admin.customers.cancelled', { n: u.cancelled }) }}</small></dd>
         </div>
+        <div v-if="u.month">
+          <dt>{{ $t('admin.customers.month') }}</dt>
+          <dd>{{ u.month.regular }}<small v-if="u.month.vip"> · VIP՝ {{ u.month.vip }}</small></dd>
+        </div>
         <div><dt>{{ $t('admin.customers.spent') }}</dt><dd>{{ money(u.spent) }}</dd></div>
         <div><dt>{{ $t('admin.customers.last') }}</dt><dd>{{ u.lastOrderAt ? day(u.lastOrderAt) : '—' }}</dd></div>
         <div>

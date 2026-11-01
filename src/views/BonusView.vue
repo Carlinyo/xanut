@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { t } from '../i18n'
-import { ApiError, commonErrorKey } from '../api'
+import { api, ApiError, commonErrorKey } from '../api'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useCatalog } from '../stores/catalog'
 import { useConfirm } from '../stores/confirm'
-import { nextLevelText, ruleText, SEGMENT_ICON, SEGMENTS } from '../utils/segments'
-import type { Perks, Product, Redemption, Segment } from '../types'
+import { nextLevelText, ruleText, SEGMENT_ICON, SEGMENTS, untilText } from '../utils/segments'
+import { money } from '../utils/format'
+import type { Order, OrderReview, Perks, Product, Redemption, Segment } from '../types'
+import OrdersList from '../components/organisms/OrdersList.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import FeatureItem from '../components/molecules/FeatureItem.vue'
 import RewardCard from '../components/molecules/RewardCard.vue'
@@ -15,7 +17,14 @@ import AppButton from '../components/atoms/AppButton.vue'
 import ProductArt from '../components/atoms/ProductArt.vue'
 
 const auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
-onMounted(() => { if (auth.isAuth) void bonus.load() }) // свежий баланс при каждом открытии
+// свежий баланс и группа при каждом открытии; заказы — для списка «заказы этого месяца»
+const orders = ref<Order[]>([])
+const ordersState = ref<'loading' | 'ok' | 'error'>('loading')
+onMounted(async () => {
+  if (!auth.isAuth) return
+  void bonus.load()
+  try { orders.value = await api<Order[]>('/orders'); ordersState.value = 'ok' } catch { ordersState.value = 'error' }
+})
 
 const percent = computed(() => bonus.percent)
 const hours = computed(() => catalog.config.bonus?.matureHours ?? 3)
@@ -84,6 +93,27 @@ const perkList = (p: Perks): string[] => [
   p.bonusPercent > 0 && t('segments.perkLong.bonus', { n: p.bonusPercent }),
   p.freeDelivery && t('segments.perkLong.free'),
 ].filter((x): x is string => !!x)
+
+// Этот месяц: сколько заказов засчитано в каждую группу и какие заказы месяца засчитаны (с отзывом о полученном)
+const bars = computed(() => {
+  const l = level.value, r = segments.value?.rules
+  if (!l?.month || !r) return []
+  return (['regular', 'vip'] as const).map((s) => {
+    const done = s === 'regular' ? l.month.regular : l.month.vip
+    const need = s === 'regular' ? r.regularOrders : r.vipOrders
+    return { s, done, need, min: s === 'regular' ? r.regularMin : r.vipMin, pct: Math.min(100, Math.round((done / need) * 100)) }
+  })
+})
+const marks = computed(() => Object.fromEntries((level.value?.marks ?? []).map((m) => [m.id, m.mark])))
+const monthOrders = computed(() => orders.value.filter((o) => o.id in marks.value))
+// у VIP заказов за месяц — десятки: сначала последние, остальные — по кнопке
+const SHOWN = 5
+const showAll = ref(false)
+const shownOrders = computed(() => (showAll.value ? monthOrders.value : monthOrders.value.slice(0, SHOWN)))
+function reviewed(id: number, review: OrderReview) {
+  const o = orders.value.find((x) => x.id === id)
+  if (o) Object.assign(o, { review, canReview: false })
+}
 </script>
 
 <template>
@@ -98,6 +128,8 @@ const perkList = (p: Perks): string[] => [
           <small>{{ $t('bonus.available') }}</small>
           <b class="hero-b__num">⭐ {{ nf(Math.max(0, bonus.available)) }}</b>
           <small v-if="bonus.pending" class="hero-b__pending">{{ $t('bonus.pending', { n: nf(bonus.pending) }) }}</small>
+          <span v-if="level" class="hero-b__seg">{{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b></span>
+          <small v-if="level && untilText(level)" class="hero-b__until">⏳ {{ untilText(level) }}</small>
         </template>
         <template v-else>
           <p>{{ $t('bonus.guest') }}</p>
@@ -129,8 +161,42 @@ const perkList = (p: Perks): string[] => [
           </ul>
         </article>
       </div>
-      <p v-if="level && nextLevelText(level)" class="lvl-next">⭐ {{ nextLevelText(level) }}</p>
-      <p v-else-if="level?.manual" class="lvl-next">{{ $t('segments.manualNote') }}</p>
+    </section>
+
+    <section v-if="level && segments" class="section">
+      <SectionTitle>📅 {{ $t('segments.monthTitle') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('segments.monthLead') }}</p>
+      <div class="mon">
+        <div class="mon__status" :class="`is-${level.segment}`">
+          <span class="mon__icon" aria-hidden="true">{{ SEGMENT_ICON[level.segment] }}</span>
+          <div class="mon__txt">
+            <b>{{ $t('segments.names.' + level.segment) }}</b>
+            <small v-if="untilText(level)">⏳ {{ untilText(level) }}</small>
+            <small v-if="level.manual">{{ $t('segments.manualNote') }}</small>
+            <small v-if="nextLevelText(level)">⭐ {{ nextLevelText(level) }}</small>
+          </div>
+        </div>
+        <div v-for="b in bars" :key="b.s" class="mon__bar" :class="[`is-${b.s}`, { 'is-full': b.done >= b.need }]">
+          <div class="mon__head">
+            <span>{{ SEGMENT_ICON[b.s] }} {{ $t('segments.names.' + b.s) }}</span>
+            <span>{{ b.done >= b.need ? $t('segments.reached') : $t('segments.progress', { done: b.done, need: b.need, min: money(b.min) }) }}</span>
+          </div>
+          <div class="mon__track" role="progressbar" :aria-label="$t('segments.names.' + b.s)" :aria-valuenow="b.done" aria-valuemin="0" :aria-valuemax="b.need">
+            <i :style="{ width: `${b.pct}%` }" />
+          </div>
+        </div>
+      </div>
+      <h3 class="mon__title">{{ $t('segments.ordersTitle') }}</h3>
+      <p class="lvl-lead">{{ $t('segments.ordersLead') }}</p>
+      <p v-if="ordersState === 'loading'" class="muted">{{ $t('state.loading') }}</p>
+      <p v-else-if="ordersState === 'error'" class="muted">{{ $t('state.error') }}</p>
+      <p v-else-if="!monthOrders.length" class="muted">{{ $t('segments.ordersEmpty') }}</p>
+      <template v-else>
+        <OrdersList :orders="shownOrders" :marks="marks" @reviewed="reviewed" />
+        <AppButton v-if="!showAll && monthOrders.length > SHOWN" class="mon__more" variant="light" @click="showAll = true">
+          {{ $t('segments.ordersMore', { n: monthOrders.length - SHOWN }) }}
+        </AppButton>
+      </template>
     </section>
 
     <section v-if="auth.isAuth && bonus.redemptions.length" ref="codesBox" class="section codes-sec">
@@ -211,7 +277,31 @@ const perkList = (p: Perks): string[] => [
 .lvl.is-vip li::before { color:var(--yellow); }
 .lvl.is-mine { border-color:var(--yellow); box-shadow:0 0 0 3px rgb(246 178 26 / .35); }
 .lvl__you { position:absolute; top:-11px; right:14px; padding:3px 10px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:12px; font-weight:800; }
-.lvl-next { margin:14px 0 0; padding:10px 14px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:14px; font-weight:600; }
+.hero-b__seg { align-self:flex-start; margin-top:6px; padding:4px 12px; border:1px solid rgb(246 178 26 / .5); border-radius:var(--pill); background:rgb(0 0 0 / .25); font-size:13px; }
+.hero-b__seg b { color:var(--yellow); }
+.hero-b__card .hero-b__until { color:#e3ebe9; }
+/* этот месяц: статус со сроком и две полосы прогресса */
+.mon { display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:14px; align-items:stretch; }
+.mon__status { display:flex; align-items:center; gap:14px; padding:16px 18px; border:1.5px solid var(--line); border-radius:var(--r-lg); background:#fff; }
+.mon__status.is-regular { border-color:var(--yellow); background:linear-gradient(160deg, #fff, #fff4ea); }
+.mon__status.is-vip { border-color:var(--dark); background:radial-gradient(240px 140px at 90% 10%, rgb(246 178 26 / .28), transparent 70%), var(--dark); color:#fff; }
+.mon__icon { flex:none; font-size:34px; line-height:1; }
+.mon__txt { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.mon__txt b { font-size:18px; }
+.mon__txt small { color:var(--muted); font-size:13px; line-height:1.45; }
+.mon__status.is-vip .mon__txt small { color:#cbd6d3; }
+.mon__bar { display:flex; flex-direction:column; justify-content:center; gap:10px; padding:16px 18px; border:1px solid var(--line); border-radius:var(--r-lg); background:#fff; }
+.mon__head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 10px; font-size:14px; font-weight:700; }
+.mon__head span:last-child { color:var(--muted); font-weight:600; }
+.mon__bar.is-full .mon__head span:last-child { color:var(--green); }
+.mon__track { height:10px; border-radius:var(--pill); background:var(--bg); overflow:hidden; }
+.mon__track i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, #f6b21a, #f08a1a); transition:width .8s var(--ease); }
+.mon__bar.is-vip .mon__track i { background:linear-gradient(90deg, #3a4b47, var(--dark)); }
+.mon__bar.is-full .mon__track i { background:var(--green); }
+.mon__title { margin:26px 0 6px; font-size:18px; }
+.mon__more { margin-top:12px; }
+@media (max-width:900px) { .mon { grid-template-columns:1fr 1fr; } .mon__status { grid-column:1 / -1; } }
+@media (max-width:560px) { .mon { grid-template-columns:1fr; } }
 .err { padding:10px 14px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:14px; }
 .codes-sec { scroll-margin-top:120px; }
 .codes { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }

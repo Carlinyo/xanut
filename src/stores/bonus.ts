@@ -38,6 +38,11 @@ export const useBonus = defineStore('bonus', {
       if (i >= 0) this.redemptions[i] = r
       this.available += r.points
     },
+    /** Покупатель закрыл сообщение «вы стали …»: прячем сразу, сервер запоминает (на других устройствах тоже не покажется). */
+    async dismissNotice() {
+      if (this.level) this.level.notice = null
+      try { await api('/bonus/notice/seen', { method: 'POST' }) } catch { /* не вышло — покажется снова при следующем открытии */ }
+    },
     reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, loaded: false }) },
   },
 })

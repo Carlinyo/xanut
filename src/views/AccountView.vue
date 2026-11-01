@@ -5,7 +5,7 @@ import { api, ApiError } from '../api'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
-import { nextLevelText, perksText, SEGMENT_ICON } from '../utils/segments'
+import { nextLevelText, perksText, SEGMENT_ICON, untilText } from '../utils/segments'
 import type { Order, OrderReview } from '../types'
 import ProfileCard from '../components/organisms/ProfileCard.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
@@ -36,8 +36,9 @@ function reviewed(id: number, review: OrderReview) {
   const o = orders.value.find((x) => x.id === id)
   if (o) Object.assign(o, { review, canReview: false })
 }
-// группа покупателя: её акция и сколько осталось до следующей
+// группа покупателя на этот месяц: её акция, до какого дня действует и сколько осталось до следующей
 const level = computed(() => bonus.level)
+const marks = computed(() => Object.fromEntries((level.value?.marks ?? []).map((m) => [m.id, m.mark])))
 </script>
 
 <template>
@@ -57,6 +58,7 @@ const level = computed(() => bonus.level)
             {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b>
             <template v-if="perksText(level.perks)"> · {{ perksText(level.perks) }}</template>
           </span>
+          <small v-if="level && untilText(level)" class="acct-bonus__next">⏳ {{ untilText(level) }}</small>
           <small v-if="level && nextLevelText(level)" class="acct-bonus__next">{{ nextLevelText(level) }}</small>
           <span class="acct-bonus__link">{{ $t('bonus.accountLink') }} →</span>
         </RouterLink>
@@ -66,7 +68,7 @@ const level = computed(() => bonus.level)
         <p v-if="loading" class="muted">{{ $t('state.loading') }}</p>
         <p v-else-if="failed" class="muted">{{ $t('state.error') }}</p>
         <p v-else-if="!orders.length" class="muted">{{ $t('account.noOrders') }}</p>
-        <OrdersList v-else :orders="orders" @reviewed="reviewed" />
+        <OrdersList v-else :orders="orders" :marks="marks" @reviewed="reviewed" />
       </section>
     </template>
   </div>

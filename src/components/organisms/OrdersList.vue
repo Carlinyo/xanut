@@ -2,17 +2,18 @@
 import { reactive, ref } from 'vue'
 import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
-import { discountLabel } from '../../utils/segments'
+import { discountLabel, markText } from '../../utils/segments'
 import { useFeedback } from '../../stores/feedback'
 import { useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
-import type { Order, OrderReview } from '../../types'
+import type { Order, OrderMark, OrderReview } from '../../types'
 import ReviewForm from '../molecules/ReviewForm.vue'
 import StarRating from '../atoms/StarRating.vue'
 import AppButton from '../atoms/AppButton.vue'
 
-defineProps<{ orders: Order[] }>()
+// marks — засчитан ли заказ этого месяца в группу клиента (у прошлых месяцев отметки нет)
+defineProps<{ orders: Order[]; marks?: Record<number, OrderMark> }>()
 const emit = defineEmits<{ reviewed: [id: number, review: OrderReview] }>()
 const feedback = useFeedback(), cart = useCart(), catalog = useCatalog(), ui = useUI()
 const notes = reactive<Record<number, { text: string; ok: boolean }>>({}) // итог «повторить» под каждым заказом
@@ -42,6 +43,7 @@ async function repeat(o: Order) {
     <li v-for="o in orders" :key="o.id">
       <div class="orders__top"><b>{{ new Date(o.createdAt).toLocaleString('en-GB') }}</b><span>{{ money(o.total) }}</span></div>
       <small class="orders__status">{{ $t('orderStatus.' + o.status) }}</small>
+      <small v-if="marks?.[o.id]" class="orders__mark" :class="`is-${marks[o.id]}`">{{ markText(marks[o.id], catalog.config.segments?.rules) }}</small>
       <small>{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
@@ -78,6 +80,9 @@ li:hover { border-color:var(--yellow); box-shadow:var(--shadow-sm); }
 small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
 .orders__disc { color:var(--green); font-weight:600; }
+.orders__mark { align-self:flex-start; padding:2px 10px; border-radius:var(--pill); background:var(--bg); font-weight:700; }
+.orders__mark.is-regular, .orders__mark.is-vip { background:#e8f5ec; color:var(--green); }
+.orders__mark.is-pending { background:var(--cream); color:#8a5f00; }
 .orders__actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:6px; }
 .orders__repeat { padding:7px 14px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:var(--ink); font-size:13px; font-weight:700; transition:background .2s, transform .2s var(--ease); }
 .orders__repeat:hover { background:var(--yellow); transform:translateY(-1px); }

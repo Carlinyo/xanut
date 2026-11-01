@@ -18,6 +18,7 @@ import ScrollProgress from '../components/atoms/ScrollProgress.vue'
 import BackToTop from '../components/molecules/BackToTop.vue'
 import ConfirmDialog from '../components/molecules/ConfirmDialog.vue'
 import FeedbackDialog from '../components/organisms/FeedbackDialog.vue'
+import LevelNoticeBar from '../components/molecules/LevelNoticeBar.vue'
 
 const cart = useCart(), ui = useUI(), catalog = useCatalog(), auth = useAuth(), bonus = useBonus(), feedback = useFeedback(), route = useRoute()
 catalog.load()
@@ -39,6 +40,7 @@ function skipToMain() {
   <a class="skip" href="#main" @click.prevent="skipToMain">{{ $t('common.skip') }}</a>
   <ScrollProgress />
   <SiteHeader />
+  <LevelNoticeBar />
   <main id="main" tabindex="-1">
     <LoadingState v-if="route.meta.catalog && !catalog.ready" :error="catalog.error" @retry="catalog.load()" />
     <RouterView v-else v-slot="{ Component }">

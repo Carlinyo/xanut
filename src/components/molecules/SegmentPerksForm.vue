@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Акции групп клиентов: скидка на товары, баллы с покупки, бесплатная доставка, и с какого числа заказов клиент
-// становится постоянным и VIP. Сохраняется после подтверждения: новые цены действуют со следующих заказов.
+// Акции групп клиентов: скидка на товары, баллы с покупки, бесплатная доставка, и сколько заказов месяца (каждый от какой
+// суммы) нужно, чтобы стать постоянным и VIP. Сохраняется после подтверждения: новые цены действуют со следующих заказов.
 import { reactive, ref, watch } from 'vue'
 import { t } from '../../i18n'
 import { commonErrorKey } from '../../api'
@@ -8,6 +8,7 @@ import { useAdmin } from '../../stores/admin'
 import { useConfirm } from '../../stores/confirm'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import { SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
+import { money } from '../../utils/format'
 import type { Segment, SegmentSettings } from '../../types'
 import FormField from './FormField.vue'
 import AppToggle from '../atoms/AppToggle.vue'
@@ -24,12 +25,15 @@ const form = reactive({
     const p = props.value.perks[s]
     return [s, { discount: str(p.discount), bonusPercent: str(p.bonusPercent), freeDelivery: p.freeDelivery }]
   })) as Record<Segment, { discount: string; bonusPercent: string; freeDelivery: boolean }>,
-  rules: { regularOrders: str(props.value.rules.regularOrders), vipOrders: str(props.value.rules.vipOrders), vipSpent: str(props.value.rules.vipSpent) },
+  rules: {
+    regularOrders: str(props.value.rules.regularOrders), regularMin: str(props.value.rules.regularMin),
+    vipOrders: str(props.value.rules.vipOrders), vipMin: str(props.value.rules.vipMin),
+  },
 })
 const errors = reactive<Record<string, string>>({})
 const formError = ref('')
 const saving = ref(false)
-// исправили поле — его ошибка больше не нужна (порог VIP сверяется с порогом постоянного — сбрасываем и его)
+// исправили поле — его ошибка больше не нужна (пороги VIP сверяются с порогами постоянного — сбрасываем и их)
 const fields = (): Record<string, string> => ({
   ...Object.fromEntries(SEGMENTS.flatMap((s) => [[`${s}.discount`, form.perks[s].discount], [`${s}.bonusPercent`, form.perks[s].bonusPercent]])),
   ...form.rules,
@@ -37,6 +41,7 @@ const fields = (): Record<string, string> => ({
 watch(fields, (now, before) => {
   for (const k of Object.keys(now)) if (now[k] !== before[k]) delete errors[k]
   if (now.regularOrders !== before.regularOrders) delete errors.vipOrders
+  if (now.regularMin !== before.regularMin) delete errors.vipMin
 })
 
 const int = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN)
@@ -58,10 +63,12 @@ function validate(): SegmentSettings | null {
     }
   }
   const regularOrders = check('regularOrders', form.rules.regularOrders, 1, 1000, t('admin.segments.errors.orders'))
+  const regularMin = check('regularMin', form.rules.regularMin, 0, 10_000_000, t('admin.segments.errors.min'))
   const vipOrders = check('vipOrders', form.rules.vipOrders, 1, 10_000, t('admin.segments.errors.orders'))
-  const vipSpent = check('vipSpent', form.rules.vipSpent, 0, 100_000_000, t('admin.segments.errors.spent'))
+  const vipMin = check('vipMin', form.rules.vipMin, 0, 10_000_000, t('admin.segments.errors.min'))
   if (!errors.regularOrders && !errors.vipOrders && vipOrders < regularOrders) errors.vipOrders = t('admin.segments.errors.vipBeforeRegular', { n: regularOrders })
-  return Object.keys(errors).length ? null : { perks, rules: { regularOrders, vipOrders, vipSpent } }
+  if (!errors.regularMin && !errors.vipMin && vipMin < regularMin) errors.vipMin = t('admin.segments.errors.vipMinBelow', { sum: money(regularMin) })
+  return Object.keys(errors).length ? null : { perks, rules: { regularOrders, regularMin, vipOrders, vipMin } }
 }
 
 async function save() {
@@ -91,17 +98,14 @@ async function save() {
       <fieldset v-for="s in SEGMENTS" :key="s" class="pf__seg" :class="`is-${s}`">
         <legend>{{ SEGMENT_ICON[s] }} {{ $t('segments.names.' + s) }}</legend>
         <p v-if="s === 'new'" class="pf__rule">{{ $t('segments.rule.new') }}</p>
-        <FormField
-          v-else-if="s === 'regular'" v-model="form.rules.regularOrders" :label="$t('admin.segments.regularOrders')" :error="errors.regularOrders"
-          inputmode="numeric" maxlength="4"
-        />
-        <template v-else>
+        <div v-else-if="s === 'regular'" class="pf__rules">
+          <FormField v-model="form.rules.regularOrders" :label="$t('admin.segments.regularOrders')" :error="errors.regularOrders" inputmode="numeric" maxlength="4" />
+          <FormField v-model="form.rules.regularMin" :label="$t('admin.segments.minOrder')" :error="errors.regularMin" inputmode="numeric" maxlength="8" />
+        </div>
+        <div v-else class="pf__rules">
           <FormField v-model="form.rules.vipOrders" :label="$t('admin.segments.vipOrders')" :error="errors.vipOrders" inputmode="numeric" maxlength="5" />
-          <FormField
-            v-model="form.rules.vipSpent" :label="$t('admin.segments.vipSpent')" :error="errors.vipSpent" inputmode="numeric" maxlength="9"
-            :placeholder="$t('admin.segments.vipSpentOff')"
-          />
-        </template>
+          <FormField v-model="form.rules.vipMin" :label="$t('admin.segments.minOrder')" :error="errors.vipMin" inputmode="numeric" maxlength="8" />
+        </div>
         <div class="pf__nums">
           <FormField v-model="form.perks[s].discount" :label="$t('admin.segments.discount')" :error="errors[`${s}.discount`]" inputmode="numeric" maxlength="2" />
           <FormField v-model="form.perks[s].bonusPercent" :label="$t('admin.segments.bonus')" :error="errors[`${s}.bonusPercent`]" inputmode="numeric" maxlength="2" />
@@ -126,6 +130,7 @@ async function save() {
 .pf__seg { display:flex; flex-direction:column; gap:12px; min-width:0; margin:0; padding:14px; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; }
 .pf__seg legend { padding:0 6px; font-weight:800; }
 .pf__seg.is-vip { border-color:var(--dark); }
+.pf__rules { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .pf__rule { margin:0; padding:10px 12px; border-radius:var(--r-md); background:var(--bg); color:var(--muted); font-size:13px; }
 /* акции — внизу каждой колонки, на одной линии во всех трёх группах */
 .pf__nums { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:auto; }
