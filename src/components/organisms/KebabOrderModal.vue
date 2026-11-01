@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { t } from '../../i18n'
 import { money } from '../../utils/format'
 import { uuid } from '../../utils/id'
-import { KEBAB_COMMENT_MAX, KEBAB_KG, isValidKg, kebabPrice } from '../../utils/kebab'
-import { useCart } from '../../stores/cart'
+import { KEBAB_COMMENT_MAX, KEBAB_KG, isKebab, isValidKg, kebabPrice } from '../../utils/kebab'
+import { KIND_FILTERS, KIND_ICON, kindOf, type KindFilter } from '../../utils/kinds'
+import { MAX_QTY, useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
+import type { Product } from '../../types'
 import OverlayShell from '../molecules/OverlayShell.vue'
 import FormField from '../molecules/FormField.vue'
 import AppCheckbox from '../atoms/AppCheckbox.vue'
@@ -16,28 +18,73 @@ const emit = defineEmits<{ close: [] }>()
 const cart = useCart(), catalog = useCatalog(), ui = useUI()
 // меню шашлыка приходит с сервера: мясо — хоровац «за кг» из каталога (цену и наличие меняют в админке)
 const kebab = computed(() => catalog.kebab)
-// открыли с карточки товара — сразу этот хоровац, иначе первый из меню
-const defaultMeat = kebab.value.meats.find((m) => m.id === ui.kebabMeat)?.id ?? kebab.value.meats[0]?.id ?? ''
-const form = reactive({ meat: defaultMeat, kg: 1, marinade: kebab.value.marinades[0] ?? '', extras: [] as string[], comment: '' })
-const meat = computed(() => kebab.value.meats.find((m) => m.id === form.meat))
-const product = computed(() => catalog.products.find((p) => String(p.id) === form.meat))
+
+/** Позиция меню: kg — порция с весом, маринадом и добавками; pc — штучный хоровац из каталога (քաբաբ, իքի բիր…),
+ *  он кладётся в корзину как обычный товар. kind — вид мяса из карточки товара (нет — «прочее»). */
+interface MenuItem { id: string; name: string; price: number; unit: 'kg' | 'pc'; kind: KindFilter; product?: Product }
+const menu = computed<MenuItem[]>(() => {
+  const byId = new Map(catalog.products.map((p) => [String(p.id), p]))
+  const kg = kebab.value.meats.map((m): MenuItem => {
+    const p = byId.get(m.id)
+    return { id: m.id, name: m.name, price: m.perKg, unit: 'kg', kind: p ? kindOf(p) : 'other', product: p }
+  })
+  const pc = catalog.shopProducts
+    .filter((p) => p.orderable && p.inStock !== false && isKebab(p) && p.unit !== 'kg')
+    .map((p): MenuItem => ({ id: String(p.id), name: p.name, price: p.price, unit: 'pc', kind: kindOf(p), product: p }))
+  // по видам, как в каталоге: свинина, говядина, баранина, курица…; внутри вида — сначала «за кг», потом штучные
+  return [...kg, ...pc].sort((a, b) => KIND_FILTERS.indexOf(a.kind) - KIND_FILTERS.indexOf(b.kind))
+})
+
+// кнопки «Խոզ / Տավար / Հավ…» — только виды, которые сейчас есть в меню
+const kind = ref<KindFilter | null>(null)
+const kinds = computed(() => KIND_FILTERS.map((k) => ({ k, n: menu.value.filter((i) => i.kind === k).length })).filter((x) => x.n))
+const shown = computed(() => (kind.value ? menu.value.filter((i) => i.kind === kind.value) : menu.value))
+const groups = computed(() => kinds.value.map(({ k }) => ({ k, items: shown.value.filter((i) => i.kind === k) })).filter((g) => g.items.length))
+/** Первая позиция списка — лучше порция «за кг»: окно прежде всего для неё. */
+const firstOf = (list: MenuItem[]) => (list.find((i) => i.unit === 'kg') ?? list[0])?.id ?? ''
+
+// открыли с карточки товара — сразу эта позиция, иначе первая из меню
+const form = reactive({
+  item: menu.value.find((i) => i.id === ui.kebabMeat)?.id ?? firstOf(menu.value),
+  kg: 1, qty: 1, marinade: kebab.value.marinades[0] ?? '', extras: [] as string[], comment: '',
+})
+const item = computed(() => menu.value.find((i) => i.id === form.item))
+const perPiece = computed(() => item.value?.unit === 'pc')
 const chosen = computed(() => kebab.value.extras.filter((e) => form.extras.includes(e.id)))
-const selection = computed(() => ({ meat: form.meat, kg: form.kg, marinade: form.marinade, extras: [...form.extras], comment: form.comment.trim() || undefined }))
-// та же формула, что на сервере; null — выбор неполный или вне ограничений (такой заказ сервер не примет)
-const price = computed(() => kebabPrice(kebab.value, selection.value))
+const selection = computed(() => ({ meat: form.item, kg: form.kg, marinade: form.marinade, extras: [...form.extras], comment: form.comment.trim() || undefined }))
+const qtyOk = computed(() => Number.isInteger(form.qty) && form.qty >= 1 && form.qty <= MAX_QTY)
+// порция — та же формула, что на сервере; null — выбор неполный или вне ограничений (такой заказ сервер не примет)
+const price = computed(() => {
+  const it = item.value
+  if (!it) return null
+  if (it.unit === 'pc') return qtyOk.value ? it.price * form.qty : null
+  return kebabPrice(kebab.value, selection.value)
+})
 const kgError = computed(() => (isValidKg(form.kg) ? '' : t('kebab.weightError', { min: KEBAB_KG.min, max: KEBAB_KG.max, step: KEBAB_KG.step })))
+const qtyError = computed(() => (qtyOk.value ? '' : t('kebab.qtyError', { max: MAX_QTY })))
+
+function pick(k: KindFilter | null) {
+  kind.value = k
+  // выбранной позиции нет среди показанных — берём первую из них
+  if (!shown.value.some((i) => i.id === form.item)) form.item = firstOf(shown.value)
+}
 
 function add() {
-  if (price.value === null || !meat.value) return
-  cart.add({
-    id: 'kebab-' + uuid(),
-    name: t('kebab.itemName', { meat: meat.value.name, kg: form.kg }),
-    price: price.value,
-    art: product.value?.art ?? 'kebab',
-    image: product.value?.image,
-    selection: selection.value,
-    note: [form.marinade, chosen.value.map((e) => e.name).join(', '), selection.value.comment].filter(Boolean).join(' · '),
-  })
+  const it = item.value
+  if (!it || price.value === null) return
+  if (it.unit === 'pc') {
+    if (it.product) cart.add(it.product, form.qty)
+  } else {
+    cart.add({
+      id: 'kebab-' + uuid(),
+      name: t('kebab.itemName', { meat: it.name, kg: form.kg }),
+      price: price.value,
+      art: it.product?.art ?? 'kebab',
+      image: it.product?.image,
+      selection: selection.value,
+      note: [form.marinade, chosen.value.map((e) => e.name).join(', '), selection.value.comment].filter(Boolean).join(' · '),
+    })
+  }
   emit('close')
 }
 </script>
@@ -50,25 +97,50 @@ function add() {
         <AppButton variant="close" :aria-label="$t('common.close')" @click="emit('close')">✕</AppButton>
       </header>
 
-      <template v-if="kebab.meats.length">
-        <FormField v-model="form.meat" as="select" :label="$t('kebab.meat')">
-          <option v-for="m in kebab.meats" :key="m.id" :value="m.id">{{ m.name }} — {{ $t('kebab.perKg', { price: m.perKg.toLocaleString('en-US') }) }}</option>
+      <template v-if="menu.length">
+        <div v-if="kinds.length > 1" class="kb__kinds" role="group" :aria-label="$t('catalog.kindsLabel')">
+          <button type="button" class="kb__chip" :class="{ on: !kind }" :aria-pressed="!kind" @click="pick(null)">
+            {{ $t('catalog.kinds.all') }} <span class="kb__n">{{ menu.length }}</span>
+          </button>
+          <button
+            v-for="x in kinds" :key="x.k" type="button" class="kb__chip" :class="{ on: kind === x.k }"
+            :aria-pressed="kind === x.k" @click="pick(x.k)"
+          >
+            <span aria-hidden="true">{{ KIND_ICON[x.k] }}</span> {{ $t('catalog.kinds.' + x.k) }} <span class="kb__n">{{ x.n }}</span>
+          </button>
+        </div>
+        <FormField v-model="form.item" as="select" :label="$t('kebab.meat')">
+          <optgroup v-for="g in groups" :key="g.k" :label="`${KIND_ICON[g.k]} ${$t('catalog.kinds.' + g.k)}`">
+            <option v-for="i in g.items" :key="i.id" :value="i.id">
+              {{ i.name }} — {{ $t(i.unit === 'pc' ? 'kebab.perPc' : 'kebab.perKg', { price: i.price.toLocaleString('en-US') }) }}
+            </option>
+          </optgroup>
         </FormField>
-        <FormField
-          v-model="form.kg" type="number" inputmode="decimal" :min="KEBAB_KG.min" :max="KEBAB_KG.max" :step="KEBAB_KG.step"
-          :label="$t('kebab.weight')" :error="kgError"
-        />
-        <FormField v-model="form.marinade" as="select" :label="$t('kebab.marinade')">
-          <option v-for="m in kebab.marinades" :key="m">{{ m }}</option>
-        </FormField>
-        <fieldset class="kb__extras">
-          <legend>{{ $t('kebab.extras') }}</legend>
-          <AppCheckbox v-for="e in kebab.extras" :key="e.id" v-model="form.extras" :value="e.id">
-            {{ e.name }} ({{ $t('kebab.plus', { price: e.price.toLocaleString('en-US') }) }})
-            <small v-if="e.note" class="kb__note">{{ e.note }}</small>
-          </AppCheckbox>
-        </fieldset>
-        <FormField v-model="form.comment" as="textarea" rows="2" :maxlength="KEBAB_COMMENT_MAX" :label="$t('kebab.comment')" />
+
+        <template v-if="perPiece">
+          <FormField
+            v-model="form.qty" type="number" inputmode="numeric" min="1" :max="MAX_QTY" step="1"
+            :label="$t('kebab.qty')" :error="qtyError"
+          />
+          <p class="kb__hint">{{ $t('kebab.pcHint') }}</p>
+        </template>
+        <template v-else>
+          <FormField
+            v-model="form.kg" type="number" inputmode="decimal" :min="KEBAB_KG.min" :max="KEBAB_KG.max" :step="KEBAB_KG.step"
+            :label="$t('kebab.weight')" :error="kgError"
+          />
+          <FormField v-model="form.marinade" as="select" :label="$t('kebab.marinade')">
+            <option v-for="m in kebab.marinades" :key="m">{{ m }}</option>
+          </FormField>
+          <fieldset class="kb__extras">
+            <legend>{{ $t('kebab.extras') }}</legend>
+            <AppCheckbox v-for="e in kebab.extras" :key="e.id" v-model="form.extras" :value="e.id">
+              {{ e.name }} ({{ $t('kebab.plus', { price: e.price.toLocaleString('en-US') }) }})
+              <small v-if="e.note" class="kb__note">{{ e.note }}</small>
+            </AppCheckbox>
+          </fieldset>
+          <FormField v-model="form.comment" as="textarea" rows="2" :maxlength="KEBAB_COMMENT_MAX" :label="$t('kebab.comment')" />
+        </template>
 
         <AppButton type="submit" size="lg" block :disabled="price === null">
           {{ $t('kebab.add') }} — <Transition name="num" mode="out-in"><span :key="price ?? 'none'">{{ price === null ? '—' : money(price) }}</span></Transition>
@@ -83,15 +155,27 @@ function add() {
 </template>
 
 <style scoped>
-.kb { display:flex; flex-direction:column; gap:14px; padding:clamp(18px, 3vw, 26px); }
+.kb { --pad:clamp(18px, 3vw, 26px); display:flex; flex-direction:column; gap:14px; padding:var(--pad); }
 .kb__head { display:flex; align-items:center; justify-content:space-between; }
 h2 { margin:0; font-size:22px; }
+.kb__kinds { display:flex; flex-wrap:wrap; gap:6px; }
+.kb__chip { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border:1.5px solid var(--line); border-radius:var(--pill); background:#fff; font-size:13px; font-weight:600; white-space:nowrap; transition:border-color .2s, background .2s; }
+.kb__chip:hover { border-color:var(--yellow); }
+.kb__chip.on { border-color:var(--yellow); background:var(--yellow); color:#1b1500; }
+.kb__n { min-width:20px; padding:0 6px; border-radius:var(--pill); background:var(--bg); color:var(--muted); font-size:12px; font-weight:700; text-align:center; }
+.kb__chip.on .kb__n { background:rgb(255 255 255 / .6); color:#1b1500; }
 .kb__extras { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:0; padding:0; border:0; }
 legend { margin-bottom:8px; padding:0; font-size:14px; font-weight:600; }
 .kb__note { display:block; margin-top:2px; color:var(--muted); font-size:12px; line-height:1.4; }
+.kb__hint { margin:-6px 0 0; color:var(--muted); font-size:13px; line-height:1.5; }
 .kb__empty { margin:0; padding:14px 16px; border-radius:var(--r-md); background:var(--bg); color:var(--muted); line-height:1.5; }
 .num-enter-active, .num-leave-active { transition:opacity .15s, transform .2s var(--ease); }
 .num-enter-from { opacity:0; transform:translateY(6px); }
 .num-leave-to { opacity:0; transform:translateY(-6px); }
-@media (max-width:480px) { .kb__extras { grid-template-columns:1fr; } }
+@media (max-width:480px) {
+  .kb__extras { grid-template-columns:1fr; }
+  /* на телефоне виды — одной строкой с прокруткой, как в каталоге */
+  .kb__kinds { flex-wrap:nowrap; overflow-x:auto; margin-inline:calc(var(--pad) * -1); padding:2px var(--pad) 4px; scrollbar-width:none; }
+  .kb__kinds::-webkit-scrollbar { display:none; }
+}
 </style>

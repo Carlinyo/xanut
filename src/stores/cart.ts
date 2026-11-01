@@ -102,17 +102,19 @@ export const useCart = defineStore('cart', {
       this.method = m
       try { localStorage.setItem(METHOD_KEY, m) } catch { /* выбор живёт до перезагрузки */ }
     },
-    add(p: Addable) {
+    /** qty — сколько штук положить (кебаб из окна шашлыка — сразу несколько). */
+    add(p: Addable, qty = 1) {
       // витринный товар и товар не в наличии заказать нельзя (сервер всё равно отклонит);
       // товар «за кг» кладут в корзину с весом: хоровац — через окно шашлыка, мясо — через окно выбора веса (p.kg)
       if (p.orderable === false || p.inStock === false || p.unit === 'kg') return
+      const n = Math.min(MAX_QTY, Math.max(1, Math.floor(qty) || 1))
       const kind: CartItem['kind'] = p.selection ? 'kebab' : p.kg !== undefined ? 'meat' : 'product'
       // одинаковые позиции складываются: мясо того же веса — ещё одна упаковка (id мяса — «meat-<товар>-<вес>»)
       const found = this.items.find((i) => i.id === p.id)
-      if (found) found.qty = Math.min(MAX_QTY, found.qty + 1)
+      if (found) found.qty = Math.min(MAX_QTY, found.qty + n)
       else this.items.push({
         id: p.id, kind, productId: p.productId ?? (typeof p.id === 'number' ? p.id : undefined), kebab: p.selection, kg: p.kg,
-        name: p.name, price: p.price, art: p.art || 'basket', image: p.image, note: p.note || '', qty: 1,
+        name: p.name, price: p.price, art: p.art || 'basket', image: p.image, note: p.note || '', qty: n,
       })
       this.save()
     },
