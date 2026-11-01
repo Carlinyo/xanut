@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { artUrl } from '../../utils/art'
 
-// Изображения товаров лежат в public/img/art (создаются tools/render-art.mjs).
+// Изображения товаров лежат в public/img/art (см. utils/art.ts).
 // Свою фотографию товара можно передать через src, например "/img/lamb-rack.jpg".
-const KINDS = ['steak', 'pork', 'ribs', 'lamb', 'chicken', 'sausage', 'mince', 'kebab', 'veg', 'bread', 'dairy', 'spice', 'drink', 'grill']
 const props = withDefaults(defineProps<{ kind?: string; src?: string; alt?: string }>(), { alt: '' })
-const file = computed(() => props.src || `/img/art/${KINDS.includes(props.kind ?? '') ? props.kind : 'steak'}.webp`)
+const file = computed(() => props.src || artUrl(props.kind))
 
 // картинка проявляется из размытия, когда загрузилась (из кэша — сразу)
 const img = ref<HTMLImageElement | null>(null)

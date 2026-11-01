@@ -6,6 +6,7 @@ import { commonErrorKey } from '../../api'
 import { useAdmin } from '../../stores/admin'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import { shrinkImage } from '../../utils/image'
+import { artUrl } from '../../utils/art'
 import ProductArt from '../atoms/ProductArt.vue'
 
 const ARTS = ['grill', 'spice', 'bread', 'drink', 'dairy', 'veg', 'kebab', 'sausage', 'mince', 'chicken', 'pork', 'ribs', 'lamb', 'steak']
@@ -60,7 +61,7 @@ async function pick(e: Event) {
         :aria-checked="!image && art === a" :title="$t('admin.rewards.arts.' + a)" :aria-label="$t('admin.rewards.arts.' + a)"
         @click="art = a; image = ''"
       >
-        <img :src="`/img/art/${a}.webp`" alt="" width="40" height="40" loading="lazy" />
+        <img :src="artUrl(a)" alt="" width="40" height="40" loading="lazy" />
       </button>
     </div>
   </fieldset>
