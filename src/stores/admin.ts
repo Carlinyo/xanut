@@ -81,6 +81,12 @@ export const useAdmin = defineStore('admin', {
       this.put(r.order)
       return r.email
     },
+    /** Подтвердить оплату (баллы заказа сразу начисляются покупателю) или снять ошибочную отметку. */
+    async setPaid(id: number, paid: boolean): Promise<AdminOrder> {
+      const r = await api<{ order: AdminOrder }>(`/admin/orders/${id}/payment`, { method: 'POST', body: { paid } })
+      this.put(r.order)
+      return r.order
+    },
 
     async loadUsers() {
       const r = await api<{ users: AdminUser[]; segments: SegmentSettings }>('/admin/users')

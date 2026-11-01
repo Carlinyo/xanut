@@ -9,10 +9,13 @@ import type { AdminOrder, EmailResult, KebabOptions } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
 const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string } }>()
-const emit = defineEmits<{ status: [status: string]; resend: [] }>()
+const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean] }>()
 
 const o = computed(() => props.order)
 const group = computed(() => (o.value.status === 'done' ? 'done' : o.value.status === 'cancelled' ? 'cancelled' : 'active'))
+/** Оплату ещё не подтвердили (у заказов до учёта оплаты paid нет — для них ни отметки, ни кнопки). */
+const unpaid = computed(() => o.value.paid === false && group.value !== 'cancelled')
+const points = computed(() => o.value.bonus?.earned ?? 0)
 const pickup = computed(() => o.value.delivery === 'pickup')
 /** Группа клиента на момент заказа: постоянного и VIP видно сразу (у нового метки нет). */
 const segment = computed(() => (isSegment(o.value.segment) ? o.value.segment : null))
@@ -52,6 +55,8 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       <div class="tk__id">
         <b class="tk__num">№{{ o.id }}</b>
         <span class="tk__status">{{ $t('orderStatus.' + o.status) }}</span>
+        <span v-if="unpaid" class="tk__pay is-unpaid">💳 {{ $t('payment.unpaid') }}</span>
+        <span v-else-if="o.paid && group !== 'cancelled'" class="tk__pay is-paid">✓ {{ $t('payment.paid') }}</span>
         <span v-if="segment && segment !== 'new'" class="tk__seg" :class="`is-${segment}`">{{ SEGMENT_ICON[segment] }} {{ $t('segments.short.' + segment) }}</span>
         <small class="tk__placed">{{ $t('admin.placed', { time: stamp(o.createdAt) }) }}</small>
       </div>
@@ -90,7 +95,9 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       <div v-if="!pickup" class="tk__line"><span>{{ $t('cart.delivery') }}</span><span>{{ o.deliveryFee ? money(o.deliveryFee) : $t('cart.free') }}</span></div>
       <div class="tk__line tk__total"><span>{{ $t('cart.total') }} <small>({{ payment }})</small></span><span>{{ money(o.total) }}</span></div>
       <div v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="tk__pts">
-        <span v-if="o.bonus.earned">⭐ {{ $t('admin.pointsEarned', { n: nf(o.bonus.earned) }) }}</span>
+        <span v-if="o.bonus.earned" :class="{ 'is-credited': o.bonus.state === 'available' }">
+          ⭐ {{ $t(o.bonus.state === 'available' ? 'admin.pointsCredited' : 'admin.pointsEarned', { n: nf(o.bonus.earned) }) }}
+        </span>
         <span v-if="o.bonus.spent">🎁 {{ $t('admin.pointsSpent', { n: nf(o.bonus.spent) }) }}</span>
       </div>
     </div>
@@ -101,15 +108,21 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
           {{ busy ? $t('admin.email.sending') : '✓ ' + $t('admin.ready') }}
         </AppButton>
         <small class="tk__hint">{{ o.email ? $t('admin.readyHint', { email: o.email }) : $t('admin.noEmail') }}</small>
-        <button type="button" class="tk__link tk__link--danger" :disabled="busy" @click="emit('status', 'cancelled')">{{ $t('admin.cancel') }}</button>
       </template>
+      <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
+      <!-- оплата: после подтверждения баллы заказа сразу начисляются покупателю -->
+      <template v-if="unpaid">
+        <AppButton block :variant="group === 'done' ? 'primary' : 'light'" :disabled="busy" @click="emit('paid', true)">💳 {{ $t('admin.pay.confirm') }}</AppButton>
+        <small v-if="points" class="tk__hint">⭐ {{ $t('admin.pay.hint', { n: nf(points) }) }}</small>
+      </template>
+      <button v-if="group === 'active'" type="button" class="tk__link tk__link--danger" :disabled="busy" @click="emit('status', 'cancelled')">{{ $t('admin.cancel') }}</button>
       <template v-else-if="group === 'done'">
-        <p class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
         <AppButton v-if="canResend" size="sm" variant="light" :disabled="busy" @click="emit('resend')">
           {{ busy ? $t('admin.email.sending') : '✉ ' + $t('admin.email.resend') }}
         </AppButton>
         <button type="button" class="tk__link" :disabled="busy" @click="emit('status', 'preparing')">↩ {{ $t('admin.reopen') }}</button>
       </template>
+      <button v-if="o.paid && group !== 'cancelled'" type="button" class="tk__link" :disabled="busy" @click="emit('paid', false)">↩ {{ $t('admin.pay.undo') }}</button>
       <p v-if="mail && group !== 'cancelled'" class="tk__mailres" :class="`is-${mail.tone}`" role="status">{{ mail.text }}</p>
       <p v-if="result?.error" class="tk__mailres is-bad" role="alert">{{ result.error }}</p>
     </footer>
@@ -164,6 +177,11 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 .tk__total small { color:var(--muted); font-size:12.5px; font-weight:500; }
 .tk__pts { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
 .tk__pts span { padding:3px 9px; border-radius:var(--pill); background:var(--cream); color:#7a5600; font-size:12.5px; font-weight:600; }
+.tk__pts span.is-credited { background:#e6f4ea; color:var(--green); }
+/* оплата: красная «не оплачен» видна сразу, зелёная «оплачен» — спокойная */
+.tk__pay { padding:3px 10px; border-radius:var(--pill); font-size:12.5px; font-weight:700; }
+.tk__pay.is-unpaid { background:#fdecea; color:var(--red); }
+.tk__pay.is-paid { background:#e6f4ea; color:var(--green); }
 
 .tk__act { grid-area:act; display:flex; flex-direction:column; align-items:stretch; gap:8px; }
 .tk__hint { color:var(--muted); font-size:12.5px; line-height:1.4; overflow-wrap:anywhere; }

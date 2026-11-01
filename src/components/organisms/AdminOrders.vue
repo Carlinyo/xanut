@@ -14,7 +14,8 @@ import AdminOrderCard from '../molecules/AdminOrderCard.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppInput from '../atoms/AppInput.vue'
 
-type Filter = 'active' | 'done' | 'cancelled' | 'all'
+/** unpaid — не оплаченные (любого статуса, кроме отменённых): заказ может быть уже готов, а деньги ещё не получены. */
+type Filter = 'active' | 'unpaid' | 'done' | 'cancelled' | 'all'
 /** Как часто спрашивать о новых заказах: открытая вкладка — каждые 5 с, фоновая — каждые 15 с (один короткий запрос). */
 const POLL_MS = 5_000, HIDDEN_POLL_MS = 15_000
 const SOUND_KEY = 'admin-sound'
@@ -32,21 +33,27 @@ const results = ref<Record<number, { email?: EmailResult | null; error?: string 
 
 const root = ref<HTMLElement | null>(null)
 const groupOf = (o: AdminOrder): Filter => (o.status === 'done' ? 'done' : o.status === 'cancelled' ? 'cancelled' : 'active')
+const isUnpaid = (o: AdminOrder) => o.paid === false && o.status !== 'cancelled'
+const inFilter = (o: AdminOrder, f: Filter) => f === 'all' || (f === 'unpaid' ? isUnpaid(o) : groupOf(o) === f)
 const counts = computed(() => {
-  const c: Record<Filter, number> = { active: 0, done: 0, cancelled: 0, all: admin.orders.length }
-  for (const o of admin.orders) c[groupOf(o)]++
+  const c: Record<Filter, number> = { active: 0, unpaid: 0, done: 0, cancelled: 0, all: admin.orders.length }
+  for (const o of admin.orders) {
+    c[groupOf(o)]++
+    if (isUnpaid(o)) c.unpaid++
+  }
   return c
 })
 const shown = computed(() => {
   const q = query.value.trim().toLowerCase().replace(/^№/, '')
   const digits = q.replace(/\D/g, '')
-  return admin.orders.filter((o) => (filter.value === 'all' || groupOf(o) === filter.value) && (!q
+  return admin.orders.filter((o) => inFilter(o, filter.value) && (!q
     || o.name.toLowerCase().includes(q) || String(o.id) === q || (o.email ?? '').toLowerCase().includes(q)
     || (digits.length >= 3 && o.phone.replace(/\D/g, '').includes(digits))))
 })
 // «в процессе» — ближайшие по времени доставки первыми; остальные — новые первыми
 const sorted = computed(() => (filter.value === 'active' ? [...shown.value].sort((a, b) => (a.time || a.createdAt).localeCompare(b.time || b.createdAt)) : shown.value))
-const filters = computed(() => (['active', 'done', 'cancelled', 'all'] as Filter[]).map((f) => ({ value: f, label: t('admin.filter.' + f), count: counts.value[f] })))
+const filters = computed(() => (['active', 'unpaid', 'done', 'cancelled', 'all'] as Filter[]).map((f) => ({ value: f, label: t('admin.filter.' + f), count: counts.value[f] })))
+const nf = (n: number) => n.toLocaleString('en-US')
 const time = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 
 async function load() {
@@ -187,13 +194,12 @@ function report(id: number, status: string | null, email: EmailResult | null) {
   say('bad', `${status ? head + ' ' : ''}${t('admin.email.failed')}${why ? ': ' + why : ''}. ${t('admin.notice.failedHint')}`)
 }
 
-async function act(o: AdminOrder, status: string | null, run: () => Promise<EmailResult | null>) {
+/** Действие с заказом: карточка занята, пока ждём сервер; ошибка — в карточке и в уведомлении сверху. */
+async function act(o: AdminOrder, run: () => Promise<void>) {
   busy.value.add(o.id)
   fresh.value.delete(o.id)
   try {
-    const email = await run()
-    results.value[o.id] = { email }
-    report(o.id, status, email)
+    await run()
   } catch (e) {
     if (authError(e)) return
     const code = e instanceof ApiError ? e.code : ''
@@ -217,8 +223,35 @@ function ask(o: AdminOrder, status: string | null): Promise<boolean> {
   if (status) return confirm.ask({ icon: '↩️', title: t('admin.confirm.reopen.title', { id: o.id }), text: t('admin.confirm.reopen.text'), yes: t('admin.confirm.reopen.yes') })
   return confirm.ask({ icon: '✉️', title: t('admin.confirm.resend.title', { id: o.id }), text: t('admin.confirm.resend.text', { email: o.email ?? '' }), yes: t('admin.confirm.resend.yes') })
 }
-async function setStatus(o: AdminOrder, status: string) { if (await ask(o, status)) await act(o, status, () => admin.setStatus(o.id, status)) }
-async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null, () => admin.resendEmail(o.id)) }
+/** Статус или повтор письма (status null): итог письма — в карточке и в уведомлении. */
+async function withEmail(o: AdminOrder, status: string | null, run: () => Promise<EmailResult | null>) {
+  await act(o, async () => {
+    const email = await run()
+    results.value[o.id] = { email }
+    report(o.id, status, email)
+  })
+}
+async function setStatus(o: AdminOrder, status: string) { if (await ask(o, status)) await withEmail(o, status, () => admin.setStatus(o.id, status)) }
+async function resend(o: AdminOrder) { if (await ask(o, null)) await withEmail(o, null, () => admin.resendEmail(o.id)) }
+
+/** Оплата: подтвердить (баллы заказа сразу начисляются покупателю) или снять отметку, поставленную по ошибке. */
+async function setPaid(o: AdminOrder, paid: boolean) {
+  const points = o.bonus?.earned ?? 0
+  const ok = paid
+    ? await confirm.ask({ icon: '💳', title: t('admin.confirm.pay.title', { id: o.id }), yes: t('admin.confirm.pay.yes'),
+      text: points ? t('admin.confirm.pay.text', { n: nf(points) }) : undefined,
+      rows: [
+        { label: t('confirm.order.who'), value: `${o.name}, ${formatPhone(o.phone)}` },
+        { label: t('cart.total'), value: money(o.total), strong: true },
+      ] })
+    : await confirm.ask({ icon: '↩️', title: t('admin.confirm.unpay.title', { id: o.id }), text: t('admin.confirm.unpay.text'), yes: t('admin.confirm.unpay.yes'), tone: 'danger' })
+  if (!ok) return
+  await act(o, async () => {
+    await admin.setPaid(o.id, paid)
+    delete results.value[o.id]
+    say('ok', !paid ? t('admin.notice.unpaid', { id: o.id }) : points ? t('admin.notice.paidPoints', { id: o.id, n: nf(points) }) : t('admin.notice.paid', { id: o.id }))
+  })
+}
 </script>
 
 <template>
@@ -266,10 +299,11 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
       <TransitionGroup v-else tag="div" name="tk" class="ao__list">
         <AdminOrderCard
           v-for="o in sorted" :key="o.id" :order="o" :busy="busy.has(o.id)" :fresh="fresh.has(o.id)" :result="results[o.id]"
-          @status="setStatus(o, $event)" @resend="resend(o)"
+          @status="setStatus(o, $event)" @resend="resend(o)" @paid="setPaid(o, $event)"
         />
       </TransitionGroup>
-      <div v-if="admin.nextBefore && filter !== 'active'" class="ao__more">
+      <!-- «в процессе» и неоплаченные сервер отдаёт все сразу, «показать ещё» — только для остальных -->
+      <div v-if="admin.nextBefore && filter !== 'active' && filter !== 'unpaid'" class="ao__more">
         <AppButton variant="light" :disabled="loadingMore" @click="more">{{ loadingMore ? $t('state.loading') : $t('admin.more') }}</AppButton>
       </div>
     </template>
@@ -285,6 +319,7 @@ async function resend(o: AdminOrder) { if (await ask(o, null)) await act(o, null
 .ao__num { min-width:22px; padding:1px 7px; border-radius:var(--pill); background:var(--bg); color:var(--ink); font-size:12px; font-weight:800; text-align:center; }
 .ao__filter.on .ao__num { background:var(--yellow); color:#1b1500; }
 .ao__filter.is-active:not(.on) .ao__num { background:var(--cream); color:#8a5f00; }
+.ao__filter.is-unpaid:not(.on) .ao__num { background:#fdecea; color:var(--red); }
 .ao__search { flex:1 1 220px; max-width:360px; padding:9px 14px; }
 .ao__refresh { display:flex; align-items:center; gap:10px; margin-left:auto; }
 .ao__sound { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:#5c4100; font-size:13px; font-weight:700; white-space:nowrap; transition:background .2s, border-color .2s, color .2s; }

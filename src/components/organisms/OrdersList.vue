@@ -42,7 +42,13 @@ async function repeat(o: Order) {
   <ul v-reveal.stagger class="orders">
     <li v-for="o in orders" :key="o.id">
       <div class="orders__top"><b>{{ new Date(o.createdAt).toLocaleString('en-GB') }}</b><span>{{ money(o.total) }}</span></div>
-      <small class="orders__status">{{ $t('orderStatus.' + o.status) }}</small>
+      <small class="orders__status">
+        {{ $t('orderStatus.' + o.status) }}
+        <!-- оплата: у заказов до её учёта поля нет; у отменённого не важна -->
+        <span v-if="o.paid !== undefined && o.status !== 'cancelled'" class="orders__pay" :class="o.paid ? 'is-paid' : 'is-unpaid'">
+          · {{ o.paid ? '✓ ' + $t('payment.paid') : '💳 ' + $t('payment.unpaid') }}
+        </span>
+      </small>
       <small v-if="marks?.[o.id]" class="orders__mark" :class="`is-${marks[o.id]}`">{{ markText(marks[o.id], catalog.config.segments?.rules) }}</small>
       <small>{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
@@ -79,6 +85,8 @@ li:hover { border-color:var(--yellow); box-shadow:var(--shadow-sm); }
 .orders__top { display:flex; justify-content:space-between; gap:12px; }
 small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
+.orders__pay.is-unpaid { color:var(--red); }
+.orders__pay.is-paid { color:var(--green); }
 .orders__disc { color:var(--green); font-weight:600; }
 .orders__mark { align-self:flex-start; padding:2px 10px; border-radius:var(--pill); background:var(--bg); font-weight:700; }
 .orders__mark.is-regular, .orders__mark.is-vip { background:#e8f5ec; color:var(--green); }
