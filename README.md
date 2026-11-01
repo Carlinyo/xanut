@@ -46,7 +46,10 @@ Vercel: импортируйте репозиторий, пресет Vite (`npm
 npm i -D playwright sharp && npx playwright install chromium
 node tools/render-art.mjs            # public/img/art/*.webp
 node tools/render-backgrounds.mjs    # public/img/bg/*.webp
+node tools/render-sketches.mjs       # public/img/cat/*.webp — карандашные рисунки плиток «Տեսականի» (только sharp)
 ```
+
+Фотографии товаров кладутся в `public/img/art` (какое фото у какого рисунка — `src/utils/art.ts`). После добавления новых запустите `node tools/shrink-photos.mjs` (нужен только `sharp`): он уменьшит крупные до 1000 px по длинной стороне — фото с телефона весит 2–3 МБ, после — около 200 КБ.
 
 ## Бонусы
 

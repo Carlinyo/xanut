@@ -417,14 +417,21 @@ function pencil(color, lines, seed) {
   return out
 }
 
-/** Предмет — по центру и одного размера на всех рисунках (FILL — доля стороны по большему измерению). */
-const FILL = 0.94
+/** Предмет — по центру и одного размера на всех рисунках. Плитка показывает картинку на TILE ширины белого круга
+ *  (.tile__art в CategoryTile.vue), поэтому рисунок вписывается в круг, а не в квадрат: самая дальняя от центра точка
+ *  ложится на RING радиуса круга. Так высокие предметы (бутылка, кролик) не вылезают за край, а вытянутые (рыба)
+ *  не выглядят мельче остальных. SIDE — предел по большему измерению: плоский предмет не упрётся в края картинки. */
+const TILE = 0.8, RING = 0.86, SIDE = 0.98
 async function save(kind, rgba) {
   const buf = Buffer.alloc(W * W * 4)
   for (let i = 0; i < buf.length; i++) buf[i] = Math.round(clamp01(rgba[i]) * 255)
+  const solid = (x, y) => buf[(y * W + x) * 4 + 3] > 10
   let x0 = W, y0 = W, x1 = 0, y1 = 0
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (buf[(y * W + x) * 4 + 3] > 10) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
-  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, k = (SIZE * FILL) / Math.max(bw, bh)
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (solid(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, cx = x0 + bw / 2, cy = y0 + bh / 2
+  let reach = 0 // самая дальняя точка рисунка от его центра
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (solid(x, y)) reach = Math.max(reach, Math.hypot(x + 0.5 - cx, y + 0.5 - cy))
+  const k = Math.min((SIZE * SIDE) / Math.max(bw, bh), ((SIZE / 2 / TILE) * RING) / reach)
   const tw = Math.round(bw * k), th = Math.round(bh * k), left = Math.floor((SIZE - tw) / 2), top = Math.floor((SIZE - th) / 2)
   await sharp(buf, { raw: { width: W, height: W, channels: 4 } })
     .extract({ left: x0, top: y0, width: bw, height: bh })
