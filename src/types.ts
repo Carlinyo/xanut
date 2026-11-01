@@ -3,6 +3,8 @@ export type LinkTo = string | { path: string; query?: Record<string, string | nu
 /** kebab — хоровац (заказ к часовому окну, «за кг» — через окно шашлыка); false — мясо. Старый сервер поля не присылает:
  *  тогда заказывать можно было только хоровац. */
 export interface Category { id: number; name: string; art: string; orderable: boolean; kebab?: boolean }
+/** Категория в админке (раздел «Բաժիններ»): position — место на сайте; products — товаров каталога в ней (и скрытых тоже). */
+export interface AdminCategory extends Category { position: number; kebab: boolean; products: number }
 /** Цена — за 1 кг или за штуку. */
 export type ProductUnit = 'kg' | 'pc'
 /** Вид мяса у хороваца (фильтр и порядок в каталоге) — см. utils/kinds.ts. */

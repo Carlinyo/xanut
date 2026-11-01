@@ -8,12 +8,13 @@ import AdminFeedback from '../components/organisms/AdminFeedback.vue'
 import AdminRewards from '../components/organisms/AdminRewards.vue'
 import AdminCodes from '../components/organisms/AdminCodes.vue'
 import AdminCatalog from '../components/organisms/AdminCatalog.vue'
+import AdminCategories from '../components/organisms/AdminCategories.vue'
 import AdminReviews from '../components/organisms/AdminReviews.vue'
 
 // Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
 const route = useRoute(), router = useRouter(), admin = useAdmin()
-type Tab = 'orders' | 'customers' | 'catalog' | 'rewards' | 'codes' | 'reviews' | 'feedback'
-const TABS: Tab[] = ['orders', 'customers', 'catalog', 'rewards', 'codes', 'reviews', 'feedback']
+type Tab = 'orders' | 'customers' | 'catalog' | 'categories' | 'rewards' | 'codes' | 'reviews' | 'feedback'
+const TABS: Tab[] = ['orders', 'customers', 'catalog', 'categories', 'rewards', 'codes', 'reviews', 'feedback']
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
 const open = (t: Tab) => router.replace({ query: t === 'orders' ? {} : { tab: t } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
@@ -34,6 +35,9 @@ onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}
         </button>
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'catalog' }" :aria-selected="tab === 'catalog'" @click="open('catalog')">
           📦 {{ $t('admin.tabs.catalog') }}
+        </button>
+        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'categories' }" :aria-selected="tab === 'categories'" @click="open('categories')">
+          🗂 {{ $t('admin.tabs.categories') }}
         </button>
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'rewards' }" :aria-selected="tab === 'rewards'" @click="open('rewards')">
           🎁 {{ $t('admin.tabs.rewards') }}
@@ -56,6 +60,7 @@ onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}
     <AdminRewards v-if="tab === 'rewards'" role="tabpanel" />
     <AdminCodes v-if="tab === 'codes'" role="tabpanel" />
     <AdminCatalog v-if="tab === 'catalog'" role="tabpanel" />
+    <AdminCategories v-if="tab === 'categories'" role="tabpanel" />
     <AdminReviews v-if="tab === 'reviews'" role="tabpanel" />
   </div>
 </template>

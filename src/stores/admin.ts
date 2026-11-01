@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
+import type { AdminCategory, AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
@@ -17,6 +17,8 @@ export interface ProductDraft {
 }
 /** Изменение товара: любые поля каталога и баллы; image: '' — убрать фото. */
 export type ProductPatch = Partial<ProductDraft> & { bonusPoints?: number | null }
+/** Новая категория: название, карандашный рисунок (utils/art.ts → CATEGORY_ARTS), «можно заказать на сайте». */
+export interface CategoryDraft { name: string; art: string; orderable: boolean }
 
 const newestFirst = (a: AdminOrder, b: AdminOrder) => b.createdAt.localeCompare(a.createdAt)
 
@@ -32,6 +34,9 @@ export const useAdmin = defineStore('admin', {
     ordersLoaded: false,
     products: [] as AdminProduct[],
     productsLoaded: false,
+    /** Категории в порядке сайта. */
+    categories: [] as AdminCategory[],
+    categoriesLoaded: false,
     users: [] as AdminUser[],
     usersLoaded: false,
     /** Акции групп клиентов и правила групп. */
@@ -147,6 +152,34 @@ export const useAdmin = defineStore('admin', {
       this.products = this.products.filter((p) => p.id !== id)
     },
     removeReward(id: number) { return this.removeProduct(id) },
+
+    // ---------- категории: после каждой правки сайт в этой вкладке сразу показывает новые (мимо кэша) ----------
+    async loadCategories() {
+      this.categories = await api<AdminCategory[]>('/admin/categories')
+      this.categoriesLoaded = true
+    },
+    async createCategory(d: CategoryDraft): Promise<AdminCategory> {
+      const c = await api<AdminCategory>('/admin/categories', { method: 'POST', body: d })
+      this.categories = [...this.categories, c]
+      void useCatalog().load(true)
+      return c
+    },
+    async updateCategory(id: number, patch: Partial<CategoryDraft>): Promise<AdminCategory> {
+      const c = await api<AdminCategory>(`/admin/categories/${id}`, { method: 'PATCH', body: patch })
+      this.categories = this.categories.map((x) => (x.id === id ? c : x))
+      void useCatalog().load(true)
+      return c
+    },
+    /** Новый порядок: ids — все категории так, как они должны идти на сайте. */
+    async reorderCategories(ids: number[]) {
+      this.categories = await api<AdminCategory[]>('/admin/categories/order', { method: 'PUT', body: { ids } })
+      void useCatalog().load(true)
+    },
+    async removeCategory(id: number) {
+      await api(`/admin/categories/${id}`, { method: 'DELETE' })
+      this.categories = this.categories.filter((c) => c.id !== id)
+      void useCatalog().load(true)
+    },
 
     async loadReviews() {
       this.reviews = await api<AdminReview[]>('/admin/reviews')
