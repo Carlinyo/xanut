@@ -9,6 +9,7 @@ import PromoBanner from '../molecules/PromoBanner.vue'
 </template>
 
 <style scoped>
-.promos { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
-@media (max-width:900px) { .promos { grid-template-columns:1fr; } }
+/* сколько баннеров в promos (hy.json), столько равных колонок */
+.promos { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:16px; }
+@media (max-width:900px) { .promos { grid-auto-flow:row; } }
 </style>
