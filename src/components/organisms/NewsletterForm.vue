@@ -7,8 +7,10 @@ import InfoPanel from '../molecules/InfoPanel.vue'
 import AppInput from '../atoms/AppInput.vue'
 import AppButton from '../atoms/AppButton.vue'
 import PrivacyNote from '../molecules/PrivacyNote.vue'
+import HoneypotField from '../atoms/HoneypotField.vue'
 
 const email = ref(''), done = ref(false), busy = ref(false), error = ref('')
+const trap = ref('') // скрытое поле-ловушка: заполняют только боты
 watch(email, () => { error.value = '' })
 async function subscribe() {
   if (busy.value) return
@@ -17,7 +19,7 @@ async function subscribe() {
   if (error.value) return
   busy.value = true
   try {
-    await api('/subscribe', { method: 'POST', body: { email: email.value } }) // сервер не дублирует один и тот же email
+    await api('/subscribe', { method: 'POST', body: { email: email.value, website: trap.value || undefined } }) // сервер не дублирует один и тот же email
     done.value = true
   } catch (e) {
     // сервер проверяет и домен почты (одноразовые ящики, опечатки в домене) — показываем точную причину
@@ -33,6 +35,7 @@ async function subscribe() {
     <form v-else class="nl" novalidate @submit.prevent="subscribe">
       <AppInput v-model="email" type="email" :invalid="!!error" :placeholder="$t('newsletter.placeholder')" :aria-label="$t('newsletter.placeholder')" />
       <AppButton type="submit" :disabled="busy">{{ busy ? $t('common.sending') : $t('newsletter.submit') }}</AppButton>
+      <HoneypotField v-model="trap" />
       <small v-if="error" class="nl__err" role="alert">{{ error }}</small>
     </form>
     <PrivacyNote v-if="!done" />

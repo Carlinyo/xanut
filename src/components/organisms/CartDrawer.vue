@@ -52,6 +52,7 @@ const methodOptions = computed(() => [
 
         <ChoiceToggle v-model="method" :options="methodOptions" :label="$t('cart.methodLabel')" class="drawer__method" />
         <p v-if="cart.method === 'pickup'" class="drawer__pickup">🏪 {{ $t('cart.pickupHint', { address: $t('contact.address') }) }}</p>
+        <p v-else class="drawer__pickup">💵 {{ $t('cart.deliveryCash') }}</p>
 
         <dl class="sum">
           <dt>{{ $t('cart.items') }}</dt><dd>{{ money(cart.subtotal) }}</dd>

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
-import type { AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
+import type { AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
 interface OrderUpdate { order: AdminOrder; email: EmailResult | null }
@@ -38,8 +38,13 @@ export const useAdmin = defineStore('admin', {
     segments: null as SegmentSettings | null,
     reviews: [] as AdminReview[],
     reviewsLoaded: false,
+    /** Жалобы и предложения с сайта, новые первыми. */
+    feedback: [] as AdminFeedback[],
+    feedbackLoaded: false,
   }),
   getters: {
+    /** Сколько жалоб и предложений ещё не разобрано (метка на вкладке). */
+    feedbackNew: (s): number => s.feedback.filter((f) => f.status === 'new').length,
     rewards: (s): AdminProduct[] => s.products.filter((p) => p.bonusPoints || p.bonusOnly).sort((a, b) => (a.bonusPoints ?? 0) - (b.bonusPoints ?? 0)),
   },
   actions: {
@@ -94,6 +99,17 @@ export const useAdmin = defineStore('admin', {
       const catalog = useCatalog()
       catalog.config = { ...catalog.config, segments: saved, bonus: catalog.config.bonus && { ...catalog.config.bonus, percent: saved.perks.new.bonusPercent, rate: saved.perks.new.bonusPercent / 100 } }
       await this.loadUsers().catch(() => {}) // акции уже сохранены; список обновится при следующем открытии
+    },
+
+    async loadFeedback() {
+      this.feedback = (await api<{ items: AdminFeedback[] }>('/admin/feedback')).items
+      this.feedbackLoaded = true
+    },
+    /** done — разобрано (ответили, исправили); new — вернуть в неразобранные. */
+    async setFeedbackStatus(id: number, status: AdminFeedback['status']): Promise<AdminFeedback> {
+      const f = await api<AdminFeedback>(`/admin/feedback/${id}`, { method: 'PATCH', body: { status } })
+      this.feedback = this.feedback.map((x) => (x.id === f.id ? f : x))
+      return f
     },
 
     async loadProducts() {

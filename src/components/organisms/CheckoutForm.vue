@@ -52,6 +52,8 @@ watch(saved, (u) => { if (!u) who.value = 'new' })
 // самовывоз из магазина: адрес не нужен и не проверяется (выбор — в корзине над итогом)
 const pickup = computed(() => cart.method === 'pickup')
 watch(pickup, () => { errors.address = '' })
+// при доставке оплата только наличными: картой можно заплатить лишь в магазине при самовывозе
+watch(pickup, (p) => { if (!p) form.payment = 'cash' })
 // поля показываем, когда вводят новые данные; в «моих» — только адрес, если его ещё нет в аккаунте
 const showContact = computed(() => who.value === 'new')
 const showAddress = computed(() => !pickup.value && (who.value === 'new' || !savedHasAddress.value || fixAddress.value))
@@ -119,6 +121,11 @@ async function fail(e: unknown) {
     errors.form = t('cart.changed')
     return
   }
+  if (code === 'VALIDATION' && err?.issues?.some((i) => i.path === 'payment')) { // картой при доставке нельзя
+    form.payment = 'cash'
+    errors.form = t('checkout.cashOnlyError')
+    return
+  }
   if (code === 'VALIDATION') {
     const fe = serverFieldErrors(err?.issues)
     if (fe.name || fe.phone || fe.address) {
@@ -131,6 +138,7 @@ async function fail(e: unknown) {
   if (code === 'ADDRESS_INVALID') errors.address = t('errors.addressInvalid')
   else if (code === 'ADDRESS_UNAVAILABLE') errors.address = t('errors.addressUnavailable')
   else if (code === 'PHONE_EXISTS') errors.phone = t('auth.phoneExists') // «запомнить» номер, который уже у другого аккаунта
+  else if (code === 'TOO_MANY_ACTIVE') errors.form = t('checkout.tooManyActive', { max: Number(err?.details.max ?? 3), phone: t('contact.phone') })
   else errors.form = t(commonErrorKey(e))
 }
 /** Сводка заказа для окна «Подтвердить заказ?»: кто, как и когда получает, сколько платит. */
@@ -141,7 +149,7 @@ function summary(): ConfirmOptions {
     { label: t('cart.methodLabel'), value: pickup.value ? `🏪 ${t('cart.pickup')}` : `🚚 ${t('cart.delivery')}` },
     pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') } : { label: t('checkout.address'), value: form.address.trim() },
     { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot, exact.value) },
-    { label: t('checkout.payment'), value: form.payment === 'cash' ? t('checkout.cash') : t(pickup.value ? 'checkout.cardPickup' : 'checkout.card') },
+    { label: t('checkout.payment'), value: form.payment === 'cash' || !pickup.value ? t('checkout.cash') : t('checkout.cardPickup') },
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
   ]
   if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
@@ -169,7 +177,7 @@ async function submit() {
     if (!(await confirm.ask(summary()))) return
     busy.value = true
     const order = await cart.checkout({
-      ...form, delivery: cart.method, address: pickup.value ? '' : form.address, comment: form.comment.trim() || undefined,
+      ...form, delivery: cart.method, address: pickup.value ? '' : form.address, comment: form.comment.trim() || undefined, payment: pickup.value ? form.payment : 'cash',
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
@@ -210,10 +218,14 @@ async function submit() {
       :hint="$t(exact ? 'slots.hintMeat' : 'slots.hint')" :compact="exact"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
     />
-    <FormField v-model="form.payment" as="select" :label="$t('checkout.payment')">
+    <FormField v-if="pickup" v-model="form.payment" as="select" :label="$t('checkout.payment')">
       <option value="cash">{{ $t('checkout.cash') }}</option>
-      <option value="card">{{ $t(pickup ? 'checkout.cardPickup' : 'checkout.card') }}</option>
+      <option value="card">{{ $t('checkout.cardPickup') }}</option>
     </FormField>
+    <div v-else class="co__pay">
+      <span class="co__pay-label">{{ $t('checkout.payment') }}</span>
+      <p class="co__pay-cash">💵 {{ $t('checkout.cash') }}<small>{{ $t('checkout.cashOnly') }}</small></p>
+    </div>
     <FormField v-model="form.comment" as="textarea" rows="2" maxlength="300" :label="$t('checkout.comment')" :placeholder="$t('checkout.commentPlaceholder')" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
@@ -228,4 +240,8 @@ async function submit() {
 .co__saved .muted { font-size:12px; }
 .co__fielderr { color:var(--red); font-size:12px; }
 .co__checking { margin-top:-6px; color:var(--muted); font-size:12px; }
+.co__pay { display:flex; flex-direction:column; gap:6px; font-size:14px; }
+.co__pay-label { font-weight:600; }
+.co__pay-cash { display:flex; flex-direction:column; gap:2px; margin:0; padding:10px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--bg); font-weight:700; }
+.co__pay-cash small { color:var(--muted); font-size:12px; font-weight:500; }
 </style>

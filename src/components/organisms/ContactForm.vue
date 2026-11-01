@@ -8,8 +8,10 @@ import InfoPanel from '../molecules/InfoPanel.vue'
 import FormField from '../molecules/FormField.vue'
 import AppButton from '../atoms/AppButton.vue'
 import PrivacyNote from '../molecules/PrivacyNote.vue'
+import HoneypotField from '../atoms/HoneypotField.vue'
 
 const form = reactive({ name: '', phone: '', message: '' })
+const trap = ref('') // скрытое поле-ловушка: заполняют только боты
 const errors = reactive({ name: '', phone: '', message: '', form: '' })
 const sent = ref(false)
 const busy = ref(false)
@@ -27,7 +29,7 @@ async function send() {
   if (errors.name || errors.phone || errors.message) return
   busy.value = true
   try {
-    await api('/contact', { method: 'POST', body: { ...form, requestId } })
+    await api('/contact', { method: 'POST', body: { ...form, requestId, website: trap.value || undefined } })
     sent.value = true
   } catch (e) {
     const fe = e instanceof ApiError && e.code === 'VALIDATION' ? serverFieldErrors(e.issues) : {}
@@ -44,6 +46,7 @@ async function send() {
       <FormField v-model="form.name" :label="$t('contact.name')" :error="errors.name" autocomplete="name" maxlength="80" />
       <FormField v-model="form.phone" type="tel" :label="$t('contact.phoneLabel')" :error="errors.phone" autocomplete="tel" maxlength="20" />
       <FormField v-model="form.message" as="textarea" rows="4" :label="$t('contact.message')" :error="errors.message" maxlength="2000" />
+      <HoneypotField v-model="trap" />
       <p v-if="errors.form" class="err" role="alert">{{ errors.form }}</p>
       <PrivacyNote />
       <AppButton type="submit" :disabled="busy">{{ busy ? $t('common.sending') : $t('contact.send') }}</AppButton>

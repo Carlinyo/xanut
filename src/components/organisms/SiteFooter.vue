@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { useFeedback } from '../../stores/feedback'
 import AppLogo from '../atoms/AppLogo.vue'
+const feedback = useFeedback()
 </script>
 
 <template>
@@ -11,6 +13,7 @@ import AppLogo from '../atoms/AppLogo.vue'
         <li>📍 {{ $t('contact.address') }}</li>
         <li>✉️ <a :href="`mailto:${$t('contact.email')}`">{{ $t('contact.email') }}</a></li>
         <li>🕘 {{ $t('contact.hours') }}</li>
+        <li><button type="button" class="foot__fb" @click="feedback.open()">💬 {{ $t('feedback.link') }}</button></li>
         <li><RouterLink to="/privacy">{{ $t('privacy.title') }}</RouterLink></li>
       </ul>
     </div>
@@ -26,5 +29,7 @@ import AppLogo from '../atoms/AppLogo.vue'
 ul { display:flex; flex-wrap:wrap; gap:10px 28px; margin:0; padding:0; list-style:none; }
 a { transition:color .2s; }
 a:hover { color:var(--yellow); }
+.foot__fb { padding:0; border:0; background:none; color:inherit; font:inherit; text-decoration:underline; text-decoration-color:rgb(246 178 26 / .6); text-underline-offset:3px; transition:color .2s; }
+.foot__fb:hover { color:var(--yellow); }
 @media (max-width:700px) { .foot__in, ul { flex-direction:column; align-items:flex-start; } }
 </style>

@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
+import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
 import { discountLabel } from '../../utils/segments'
+import { useFeedback } from '../../stores/feedback'
+import { useCart } from '../../stores/cart'
+import { useCatalog } from '../../stores/catalog'
+import { useUI } from '../../stores/ui'
 import type { Order, OrderReview } from '../../types'
 import ReviewForm from '../molecules/ReviewForm.vue'
 import StarRating from '../atoms/StarRating.vue'
@@ -9,6 +14,8 @@ import AppButton from '../atoms/AppButton.vue'
 
 defineProps<{ orders: Order[] }>()
 const emit = defineEmits<{ reviewed: [id: number, review: OrderReview] }>()
+const feedback = useFeedback(), cart = useCart(), catalog = useCatalog(), ui = useUI()
+const notes = reactive<Record<number, { text: string; ok: boolean }>>({}) // итог «повторить» под каждым заказом
 /** Заказ, у которого открыта форма отзыва. */
 const writing = ref<number | null>(null)
 const thanked = ref<number | null>(null)
@@ -16,6 +23,17 @@ function done(id: number, review: OrderReview) {
   writing.value = null
   thanked.value = id
   emit('reviewed', id, review)
+}
+
+/** Тот же заказ ещё раз: позиции — в корзину по сегодняшним ценам, корзина открывается для проверки и оформления. */
+async function repeat(o: Order) {
+  await catalog.load()
+  if (!catalog.ready) { notes[o.id] = { text: t('state.error'), ok: false }; return }
+  const { added, skipped } = cart.repeat(o)
+  notes[o.id] = !added ? { text: t('account.repeatNone'), ok: false }
+    : skipped.length ? { text: t('account.repeatedPartly', { names: skipped.join(', ') }), ok: true }
+    : { text: t('account.repeated'), ok: true }
+  if (added) ui.cartOpen = true
 }
 </script>
 
@@ -43,6 +61,11 @@ function done(id: number, review: OrderReview) {
         <ReviewForm v-if="writing === o.id" :order-id="o.id" @done="done(o.id, $event)" @cancel="writing = null" />
         <AppButton v-else class="orders__write" size="sm" variant="light" @click="writing = o.id">⭐ {{ $t('reviews.write') }}</AppButton>
       </template>
+      <div class="orders__actions">
+        <button type="button" class="orders__repeat" @click="repeat(o)">🔁 {{ $t('account.repeat') }}</button>
+        <button type="button" class="orders__fb" @click="feedback.open({ type: 'complaint', orderId: o.id })">⚠️ {{ $t('feedback.aboutOrder') }}</button>
+      </div>
+      <small v-if="notes[o.id]" class="orders__note" :class="{ 'is-ok': notes[o.id].ok }" role="status">{{ notes[o.id].text }}</small>
     </li>
   </ul>
 </template>
@@ -55,6 +78,13 @@ li:hover { border-color:var(--yellow); box-shadow:var(--shadow-sm); }
 small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
 .orders__disc { color:var(--green); font-weight:600; }
+.orders__actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:6px; }
+.orders__repeat { padding:7px 14px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:var(--ink); font-size:13px; font-weight:700; transition:background .2s, transform .2s var(--ease); }
+.orders__repeat:hover { background:var(--yellow); transform:translateY(-1px); }
+.orders__note { color:var(--red); font-weight:600; }
+.orders__note.is-ok { color:var(--green); }
+.orders__fb { padding:0; border:0; background:none; color:var(--muted); font-size:13px; font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+.orders__fb:hover { color:var(--red); }
 .orders__bonus { display:flex; flex-wrap:wrap; gap:4px 14px; color:#8a5f00; font-weight:600; }
 .orders__bonus.is-available { color:var(--green); }
 .orders__bonus.is-cancelled { text-decoration:line-through; opacity:.7; }

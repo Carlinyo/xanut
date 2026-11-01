@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAdmin } from '../stores/admin'
 import AdminOrders from '../components/organisms/AdminOrders.vue'
 import AdminCustomers from '../components/organisms/AdminCustomers.vue'
+import AdminFeedback from '../components/organisms/AdminFeedback.vue'
 import AdminRewards from '../components/organisms/AdminRewards.vue'
 import AdminCodes from '../components/organisms/AdminCodes.vue'
 import AdminCatalog from '../components/organisms/AdminCatalog.vue'
@@ -11,11 +12,13 @@ import AdminReviews from '../components/organisms/AdminReviews.vue'
 
 // Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
 const route = useRoute(), router = useRouter(), admin = useAdmin()
-type Tab = 'orders' | 'customers' | 'catalog' | 'rewards' | 'codes' | 'reviews'
-const TABS: Tab[] = ['orders', 'customers', 'catalog', 'rewards', 'codes', 'reviews']
+type Tab = 'orders' | 'customers' | 'catalog' | 'rewards' | 'codes' | 'reviews' | 'feedback'
+const TABS: Tab[] = ['orders', 'customers', 'catalog', 'rewards', 'codes', 'reviews', 'feedback']
 const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
 const open = (t: Tab) => router.replace({ query: t === 'orders' ? {} : { tab: t } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
+// неразобранные жалобы и предложения — меткой на вкладке, даже если она не открыта
+onMounted(() => { if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {}) })
 </script>
 
 <template>
@@ -41,11 +44,15 @@ const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancell
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'reviews' }" :aria-selected="tab === 'reviews'" @click="open('reviews')">
           ⭐ {{ $t('admin.tabs.reviews') }}
         </button>
+        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'feedback' }" :aria-selected="tab === 'feedback'" @click="open('feedback')">
+          💬 {{ $t('admin.tabs.feedback') }}<span v-if="admin.feedbackNew" class="adm__count">{{ admin.feedbackNew }}</span>
+        </button>
       </div>
     </div>
     <!-- заказы не выгружаем при переключении вкладок: новые заказы видно и слышно и на других вкладках админки -->
     <AdminOrders v-show="tab === 'orders'" role="tabpanel" />
     <AdminCustomers v-if="tab === 'customers'" role="tabpanel" />
+    <AdminFeedback v-if="tab === 'feedback'" role="tabpanel" />
     <AdminRewards v-if="tab === 'rewards'" role="tabpanel" />
     <AdminCodes v-if="tab === 'codes'" role="tabpanel" />
     <AdminCatalog v-if="tab === 'catalog'" role="tabpanel" />
@@ -66,5 +73,7 @@ const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancell
 @keyframes ping { 0%, 100% { box-shadow:0 0 0 0 rgb(229 52 43 / .6); } 60% { box-shadow:0 0 0 7px rgb(229 52 43 / 0); } }
 @media (prefers-reduced-motion:reduce) { .adm__count.is-new { animation:none; outline:2px solid var(--yellow); } }
 @media (max-width:1100px) { .adm__tabs { border-radius:var(--r-lg); } }
-@media (max-width:640px) { .adm__tabs { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; } .adm__tab { justify-content:center; gap:5px; padding:10px 6px; font-size:12.5px; } }
+@media (max-width:640px) { .adm__tabs { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; } .adm__tab { justify-content:center; gap:5px; padding:10px 6px; font-size:12.5px; }
+  /* семь вкладок в три колонки: последняя — на всю строку */
+  .adm__tab:last-child:nth-child(3n + 1) { grid-column:1 / -1; } }
 </style>

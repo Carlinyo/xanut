@@ -5,7 +5,7 @@ import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
 import { discountLabel, isSegment, SEGMENT_ICON } from '../../utils/segments'
-import type { AdminOrder, EmailResult } from '../../types'
+import type { AdminOrder, EmailResult, KebabOptions } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
 const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string } }>()
@@ -23,7 +23,6 @@ const nf = (n: number) => n.toLocaleString('en-US')
 const payment = computed(() => (o.value.payment === 'cash' ? t('checkout.cash') : pickup.value ? t('checkout.cardPickup') : t('checkout.card')))
 const mapUrl = computed(() => (o.value.geo ? `https://maps.google.com/?q=${o.value.geo.lat},${o.value.geo.lon}` : `https://maps.google.com/?q=${encodeURIComponent(o.value.address)}`))
 
-interface KebabOptions { marinade?: string; extras?: string[]; comment?: string }
 /** Детали шашлыка для кухни: маринад, добавки, комментарий покупателя. */
 function details(options: unknown): string {
   if (!options || typeof options !== 'object') return ''

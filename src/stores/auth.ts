@@ -41,6 +41,14 @@ export const useAuth = defineStore('auth', {
     async resend(challengeId: string): Promise<{ expiresIn: number; resendIn: number; devCode?: string }> {
       return api('/auth/resend', { method: 'POST', body: { challengeId } })
     },
+    /** Забыли пароль, шаг 1: код на подтверждённую почту или телефон аккаунта. */
+    async resetStart(email: string): Promise<OtpChallenge> {
+      return api<OtpChallenge>('/auth/reset', { method: 'POST', body: { email } })
+    },
+    /** Шаг 2: код и новый пароль. Сервер закрывает все прежние сессии и сразу входит. */
+    async resetConfirm(challengeId: string, code: string, password: string) {
+      this.user = await api<PublicUser>('/auth/reset/confirm', { method: 'POST', body: { challengeId, code, password } })
+    },
     /** Мои данные: имя, телефон, адрес доставки. */
     async updateProfile(data: ProfileData) {
       this.user = await api<PublicUser>('/auth/me', { method: 'PATCH', body: data })

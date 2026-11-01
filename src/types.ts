@@ -61,7 +61,10 @@ export interface PublicUser {
 }
 /** devCode приходит только в тестовом режиме (почта/SMS не настроены на сервере) — чтобы регистрацию можно было пройти. */
 export interface OtpChallenge { challengeId: string; channel: Channel; destination: string; expiresIn: number; resendIn: number; devCode?: string }
-export interface OrderItem { name: string; kind?: string; unitPrice: number; qty: number; points?: number; options: unknown }
+/** productId — у товаров и бонусных товаров (нет у шашлыка и у очень старых заказов); options у шашлыка — см. KebabOptions. */
+export interface OrderItem { productId?: number | null; name: string; kind?: string; unitPrice: number; qty: number; points?: number; options: unknown }
+/** Параметры порции шашлыка в заказе: названия — для кухни; meat, kg, extraIds — чтобы повторить заказ (у старых заказов их нет). */
+export interface KebabOptions { marinade?: string; extras?: string[]; comment?: string; meat?: string; kg?: number; extraIds?: string[] }
 export type BonusState = 'pending' | 'available' | 'cancelled'
 export interface OrderBonus { earned: number; spent: number; state: BonusState; availableAt: string }
 export interface BonusEntry { orderId: number; createdAt: string; earned: number; spent: number; state: BonusState; availableAt: string }
@@ -123,6 +126,15 @@ export interface AdminUser {
   segment: Segment; segmentManual: boolean; autoSegment: Segment
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
   bonus: { available: number; pending: number }
+}
+/** Жалоба или предложение с сайта. */
+export type FeedbackType = 'complaint' | 'suggestion'
+/** Запись в админке: контакты для ответа (у вошедшего — из аккаунта), заказ, «разобрано». */
+export interface AdminFeedback {
+  id: number; type: FeedbackType; message: string
+  name: string | null; phone: string | null; email: string | null
+  userId: string | null; orderId: number | null
+  status: 'new' | 'done'; createdAt: string; doneAt: string | null
 }
 export type NavItem = { label: string; to: LinkTo } | { label: string; id: string }
 

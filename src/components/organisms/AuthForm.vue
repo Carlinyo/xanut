@@ -103,10 +103,15 @@ async function submit() {
     if (code === 'PHONE_EXISTS') { errors.phone = t('auth.phoneExists'); return }
     formError.value =
       code === 'INVALID' ? t('auth.invalid')
+        : code === 'LOGIN_LOCKED' ? t('auth.locked') // много неверных паролей к этому аккаунту: защита от подбора
         : code === 'OTP_RATE_LIMIT' ? t('otp.tooMany')
         : code === 'OTP_SEND_FAILED' ? t('otp.sendFailed')
         : t(commonErrorKey(e))
   } finally { busy.value = false }
+}
+/** «Забыли пароль?» — введённая почта переходит на следующую страницу (через состояние истории, не через адрес). */
+function forgot() {
+  router.push({ path: '/forgot', query: route.query, state: { email: form.email.trim() } })
 }
 function onVerified() {
   form.password = ''
@@ -139,6 +144,7 @@ function onVerified() {
       v-model="form.password" :label="$t('auth.password')" :error="errors.password" :policy="isReg" :context="pwContext"
       :autocomplete="isReg ? 'new-password' : 'current-password'" @blur="onBlur('password')"
     />
+    <button v-if="!isReg" type="button" class="auth__forgot" @click="forgot">{{ $t('auth.forgot') }}</button>
     <PasswordField v-if="isReg" v-model="form.confirm" :label="$t('auth.confirm')" :error="errors.confirm" autocomplete="new-password" @blur="onBlur('confirm')" />
     <ChannelPicker v-if="isReg && channels.length > 1" v-model="channel" :channels="channels" :label="$t('otp.channelLabel')" />
     <p v-else-if="isReg" class="auth__channel"><span aria-hidden="true">{{ channel === 'email' ? '✉️' : '📱' }}</span>{{ $t('otp.single.' + channel) }}</p>
@@ -165,5 +171,7 @@ h1 { margin:0 0 4px; }
 .auth__suggest { margin:-6px 0 0; font-size:13px; color:var(--muted); }
 .auth__note { margin-top:-8px; color:var(--muted); font-size:12px; }
 .auth__channel { display:flex; align-items:center; gap:8px; margin:0; padding:10px 12px; border-radius:var(--r-md); background:var(--cream); font-size:13px; }
+.auth__forgot { align-self:flex-end; margin-top:-8px; padding:2px 0; border:0; background:none; color:var(--yellow-lo); font-size:13px; font-weight:700; }
+.auth__forgot:hover { text-decoration:underline; text-underline-offset:2px; }
 .auth__suggest button { padding:0; border:0; background:none; color:var(--yellow-lo); font-weight:700; text-decoration:underline; }
 </style>

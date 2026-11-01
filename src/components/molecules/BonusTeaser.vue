@@ -30,6 +30,10 @@ p { margin:0; font-size:14px; color:#4a3700; }
 .teaser-b__arts > :nth-child(2) { transform:translateY(-6px) rotate(-6deg); }
 @media (hover:hover) { .teaser-b:hover { transform:translateY(-3px); box-shadow:0 24px 40px -24px rgb(120 80 0 / .9); } .teaser-b:hover .teaser-b__cta { padding-inline:24px; } }
 @media (max-width:1000px) { .teaser-b__arts { display:none; } }
-@media (max-width:760px) { .teaser-b { flex-wrap:wrap; } .teaser-b__cta { margin-left:72px; } }
-@media (max-width:420px) { .teaser-b__gift { width:46px; height:46px; font-size:24px; } .teaser-b__cta { margin-left:0; } }
+@media (max-width:760px) { .teaser-b { flex-wrap:wrap; } .teaser-b__txt { flex-basis:calc(100% - 90px); } .teaser-b__cta { margin-left:72px; } }
+@media (max-width:420px) {
+  .teaser-b__gift { width:46px; height:46px; font-size:24px; }
+  .teaser-b__txt { flex-basis:calc(100% - 70px); }
+  .teaser-b__cta { flex:1 1 100%; margin-left:0; text-align:center; }
+}
 </style>

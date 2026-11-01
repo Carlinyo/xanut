@@ -3,7 +3,9 @@
 let scrollLocks = 0
 // открытые окна по порядку: клавиши (Escape, Tab) обрабатывает только верхнее — например, окно подтверждения поверх корзины
 const stack: symbol[] = []
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+// tabindex="-1" — вне порядка Tab (например, скрытое поле-ловушка для ботов)
+const FOCUSABLE = ['a[href]', 'button:not([disabled])', 'input:not([disabled])', 'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]']
+  .map((s) => `${s}:not([tabindex="-1"])`).join(', ')
 </script>
 
 <script setup lang="ts">

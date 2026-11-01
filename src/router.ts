@@ -28,9 +28,11 @@ const router = createRouter({
     { path: '/bonus', component: BonusView, meta: { catalog: true, title: 'bonus.title' } },
     { path: '/login', component: AuthView, props: { mode: 'login' }, meta: { guest: true, title: 'auth.login' } },
     { path: '/register', component: AuthView, props: { mode: 'register' }, meta: { guest: true, title: 'auth.registerBtn' } },
+    { path: '/forgot', component: AuthView, props: { mode: 'reset' }, meta: { guest: true, title: 'reset.title' } },
     { path: '/account', component: AccountView, meta: { auth: true, title: 'account.mine' } },
     { path: '/admin', component: () => import('./views/AdminView.vue'), meta: { auth: true, admin: true, title: 'admin.title' } },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    // неизвестный адрес — страница «не найдено» с путями дальше (а не молчаливый переход на главную)
+    { path: '/:pathMatch(.*)*', component: () => import('./views/NotFoundView.vue'), meta: { title: 'notFound.title' } },
   ],
 })
 

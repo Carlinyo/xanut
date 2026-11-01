@@ -21,19 +21,21 @@ export const useCatalog = defineStore('catalog', {
   },
   actions: {
     /** Загружает каталог один раз; при ошибке можно вызвать снова (кнопка «Повторить»).
-     *  force — загрузить заново, даже если каталог уже есть (например, сервер сказал, что корзина устарела). */
+     *  force — загрузить заново, даже если каталог уже есть (сервер сказал, что корзина устарела; админ изменил товар):
+     *  тогда — свежие данные с сервера, мимо кэша CDN (каталог там хранится до минуты). */
     load(force = false): Promise<void> {
-      if (pending) return pending
-      if (this.ready && !force) return Promise.resolve()
-      pending = this.fetchAll().finally(() => { pending = null })
-      return pending
+      if (!force && (pending || this.ready)) return pending ?? Promise.resolve()
+      const run: Promise<void> = (pending ?? Promise.resolve()).then(() => this.fetchAll(force)).finally(() => { if (pending === run) pending = null })
+      pending = run
+      return run
     },
-    async fetchAll() {
+    async fetchAll(fresh = false) {
       this.loading = true
       this.error = ''
+      const q = fresh ? `?t=${Date.now()}` : '' // другой адрес — кэш CDN и браузера не используется
       try {
         const [categories, products, kebab, config] = await Promise.all([
-          api<Category[]>('/categories'), api<Product[]>('/products'), api<KebabConfig>('/kebab'), api<ShopConfig>('/config'),
+          api<Category[]>('/categories' + q), api<Product[]>('/products' + q), api<KebabConfig>('/kebab' + q), api<ShopConfig>('/config' + q),
         ])
         this.categories = categories
         this.products = products

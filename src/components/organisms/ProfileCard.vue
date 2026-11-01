@@ -55,7 +55,7 @@ async function save() {
       <p>📞 {{ formatPhone(auth.user.phone) }}</p>
       <p>📍 <span :class="{ muted: !auth.user.address }">{{ auth.user.address || $t('account.noAddress') }}</span></p>
       <p v-if="done" class="pc__ok" role="status">✓ {{ $t('account.saved') }}</p>
-      <div class="pc__actions"><AppButton variant="ghost" @click="start">{{ $t('account.edit') }}</AppButton><slot /></div>
+      <div class="pc__actions"><AppButton variant="light" @click="start">✏️ {{ $t('account.edit') }}</AppButton><slot /></div>
     </template>
     <form v-else class="pc__form" novalidate @submit.prevent="save">
       <FormField v-model="form.name" :label="$t('checkout.name')" :error="errors.name" autocomplete="name" />
@@ -65,7 +65,7 @@ async function save() {
       <p v-if="errors.form" class="pc__err" role="alert">{{ errors.form }}</p>
       <div class="pc__actions">
         <AppButton type="submit" :disabled="busy">{{ busy ? $t('common.sending') : $t('account.save') }}</AppButton>
-        <AppButton type="button" variant="ghost" @click="editing = false">{{ $t('account.cancel') }}</AppButton>
+        <AppButton type="button" variant="light" @click="editing = false">{{ $t('account.cancel') }}</AppButton>
       </div>
     </form>
   </InfoPanel>

@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
+import { t } from '../i18n'
 import { useCatalog } from './catalog'
 import { useBonus } from './bonus'
-import { t } from '../i18n'
 import { isKebab, isMeat, isValidKg, kebabPrice, weightPrice } from '../utils/kebab'
 import { applyPerks } from '../utils/segments'
-import type { CartItem, KebabSelection, Order, Perks, ProductUnit } from '../types'
+import { uuid } from '../utils/id'
+import type { CartItem, KebabOptions, KebabSelection, Order, Perks, ProductUnit } from '../types'
 
 /** selection — порция из окна шашлыка; kg (+ productId) — мясо на вес из окна выбора веса; иначе — штучный товар
  *  (сюда передают и сам товар каталога: его поле kebab — «это хоровац», а не выбор из окна шашлыка). */
@@ -153,6 +154,47 @@ export const useCart = defineStore('cart', {
       })
       this.save()
       return this.items.length < before
+    },
+    /** «Повторить заказ»: кладёт в корзину то, что из прошлого заказа можно заказать сейчас, — по сегодняшним ценам.
+     *  skipped — названия позиций, которые повторить нельзя: товара больше нет или он закончился, шашлык или мясо из старого
+     *  заказа (тогда выбор порции и вес не сохранялись). Подарки за баллы не повторяются: их обменивают на код. */
+    repeat(order: Order): { added: number; skipped: string[] } {
+      const { products, kebab } = useCatalog()
+      const byId = new Map(products.filter((p) => p.orderable && p.inStock !== false).map((p) => [p.id, p]))
+      const skipped: string[] = []
+      let added = 0
+      const put = (item: CartItem) => {
+        const found = this.items.find((i) => i.id === item.id)
+        if (found) found.qty = Math.min(MAX_QTY, found.qty + item.qty)
+        else this.items.push({ ...item, qty: Math.min(MAX_QTY, item.qty) })
+        added += item.qty
+      }
+      for (const it of order.items) {
+        if (it.kind === 'bonus') continue
+        const o = (it.options ?? {}) as KebabOptions
+        const p = it.productId == null ? undefined : byId.get(it.productId)
+        if (it.kind === 'kebab') {
+          const sel: KebabSelection | null = o.meat && o.kg ? { meat: o.meat, kg: o.kg, marinade: o.marinade ?? '', extras: o.extraIds ?? [], comment: o.comment || undefined } : null
+          const price = sel ? kebabPrice(kebab, sel) : null
+          const meat = sel && kebab.meats.find((m) => m.id === sel.meat)
+          if (!sel || price === null || !meat) { skipped.push(it.name); continue }
+          const kp = products.find((x) => String(x.id) === sel.meat)
+          const extras = kebab.extras.filter((e) => sel.extras.includes(e.id)).map((e) => e.name).join(', ')
+          put({
+            id: 'kebab-' + uuid(), kind: 'kebab', kebab: sel, name: t('kebab.itemName', { meat: meat.name, kg: sel.kg }), price,
+            art: kp?.art ?? 'kebab', image: kp?.image, note: [sel.marinade, extras, sel.comment].filter(Boolean).join(' · '), qty: it.qty,
+          })
+        } else if (it.kind === 'meat') {
+          const kg = o.kg
+          if (!p || p.unit !== 'kg' || !isMeat(p) || kg === undefined || !isValidKg(kg)) { skipped.push(it.name); continue }
+          put({ id: `meat-${p.id}-${kg}`, kind: 'meat', productId: p.id, kg, name: weightName(p.name, kg), price: weightPrice(p.price, kg), art: p.art, image: p.image, note: '', qty: it.qty })
+        } else {
+          if (!p || p.unit === 'kg') { skipped.push(it.name); continue }
+          put({ id: p.id, kind: 'product', productId: p.id, name: p.name, price: p.price, art: p.art || 'basket', image: p.image, note: '', qty: it.qty })
+        }
+      }
+      this.save()
+      return { added, skipped: [...new Set(skipped)] }
     },
     /** Очистить корзину после принятого заказа. */
     clear() {
