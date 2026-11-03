@@ -139,6 +139,7 @@ function add() {
               <small v-if="e.note" class="kb__note">{{ e.note }}</small>
             </AppCheckbox>
           </fieldset>
+          <p v-if="kebab.pack" class="kb__hint">🫓 {{ $t('kebab.packHint', { name: kebab.pack.name, price: kebab.pack.price.toLocaleString('en-US'), kg: kebab.pack.perKg }) }}</p>
           <FormField v-model="form.comment" as="textarea" rows="2" :maxlength="KEBAB_COMMENT_MAX" :label="$t('kebab.comment')" />
         </template>
 

@@ -11,6 +11,7 @@ import { money } from '../../utils/format'
 import { discountLabel, perksText, SEGMENT_ICON } from '../../utils/segments'
 import OverlayShell from '../molecules/OverlayShell.vue'
 import CartLine from '../molecules/CartLine.vue'
+import ProductArt from '../atoms/ProductArt.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AppButton from '../atoms/AppButton.vue'
 import CheckoutForm from './CheckoutForm.vue'
@@ -48,6 +49,16 @@ const methodOptions = computed(() => [
       <template v-else>
         <TransitionGroup name="line" tag="ul" class="drawer__lines">
           <CartLine v-for="i in cart.items" :key="i.id" :item="i" @change="change(i, $event)" />
+          <!-- обязательный «Լավաշ + աման» к шашлыку: считается сам, убрать его нельзя -->
+          <li v-if="cart.pack" key="pack" class="pack">
+            <span class="pack__art" aria-hidden="true"><ProductArt kind="bread" /></span>
+            <div class="pack__body">
+              <b>{{ cart.pack.name }}</b>
+              <small>{{ $t('cart.pack', { kg: catalog.kebab.pack?.perKg ?? 3 }) }}</small>
+              <em>{{ money(cart.pack.price) }}</em>
+            </div>
+            <span class="pack__qty">× {{ cart.pack.qty }}</span>
+          </li>
         </TransitionGroup>
 
         <ChoiceToggle v-model="method" :options="methodOptions" :label="$t('cart.methodLabel')" class="drawer__method" />
@@ -100,4 +111,12 @@ h2 { margin:0; font-size:22px; }
 .line-enter-active, .line-leave-active, .line-move { transition:opacity .3s, transform .35s var(--ease); }
 .line-enter-from, .line-leave-to { opacity:0; transform:translateX(30px); }
 .line-leave-active { position:absolute; width:calc(100% - 2 * clamp(14px, 3vw, 24px)); }
+.pack { display:flex; align-items:center; gap:12px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+.pack__art { display:grid; place-items:center; flex:none; width:52px; height:52px; border-radius:var(--r-md); background:var(--cream); }
+.pack__art > * { width:80%; height:80%; }
+.pack__body { flex:1; min-width:0; display:flex; flex-direction:column; font-size:14px; overflow-wrap:anywhere; }
+.pack__body small { color:var(--muted); font-size:12px; }
+.pack__body em { margin-top:2px; font-style:normal; font-weight:800; }
+.pack__qty { flex:none; padding:6px 12px; border-radius:var(--pill); background:var(--bg); font-size:14px; font-weight:800; }
+@media (max-width:480px) { .pack__art { width:44px; height:44px; } .pack { gap:8px; } }
 </style>

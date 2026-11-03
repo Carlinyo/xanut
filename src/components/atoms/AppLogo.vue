@@ -17,5 +17,6 @@ import LogoMark from './LogoMark.vue'
 b { font-size:clamp(18px, 1.9vw, 22px); font-weight:800; letter-spacing:-.01em; background:linear-gradient(90deg, #fff 55%, var(--yellow)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 small { margin-top:3px; font-size:11px; color:var(--yellow); }
 @media (max-width:1000px) { small { display:none; } } /* девиз в узкой шапке переносился в три строки */
-@media (max-width:480px) { .logo__mark { width:38px; height:38px; } }
+/* телефон: название в две строки («Միս ու» / «մթերք»), чтобы шапка помещалась в одну строку и у вошедшего (баллы, кабинет, корзина) */
+@media (max-width:480px) { .logo__mark { width:38px; height:38px; } b { max-width:5.4em; font-size:16px; line-height:1.05; } }
 </style>

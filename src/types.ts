@@ -33,7 +33,9 @@ export interface Product {
 export interface KebabMeat { id: string; name: string; perKg: number }
 /** note — состав добавки (показывается под названием). */
 export interface KebabExtra { id: string; name: string; price: number; note?: string }
-export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[] }
+/** Обязательный «Լավաշ + աման» к шашлыку: один на каждые начатые perKg кг всего шашлыка в заказе (старый сервер его не присылает). */
+export interface KebabPack { name: string; price: number; perKg: number }
+export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[]; pack?: KebabPack }
 export interface KebabSelection { meat: string; kg: number; marinade: string; extras: string[]; comment?: string }
 export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number }
 /** Группа клиента: новый, постоянный, VIP. */

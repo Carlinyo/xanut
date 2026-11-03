@@ -1,4 +1,4 @@
-# Մանղալ — сайт (Vue 3 + TypeScript + Vite)
+# Միս ու մթերք — сайт (Vue 3 + TypeScript + Vite) · https://misumterq.com
 
 Магазин мяса и шашлыка в Джермуке: каталог, заказ шашлыка и мяса с доставкой, регистрация с кодом подтверждения.
 
@@ -97,7 +97,7 @@ CSP (`script-src`, `connect-src`, `frame-src`, `img-src`), иначе брауз
 `index.html` — описание и картинка для превью ссылок в Facebook, Telegram, Viber (`public/og.jpg`) и данные магазина для
 Google (адрес, телефон, часы — блок `application/ld+json`). `public/manifest.webmanifest` и `public/icons/` — иконка при
 добавлении сайта на главный экран телефона. `public/robots.txt` и `public/sitemap.xml` — для поисковиков.
-**Если подключите свой домен** вместо `xanut.vercel.app`, замените адрес в этих трёх файлах и в `index.html`.
+Адрес сайта — `https://misumterq.com` (прописан в этих трёх файлах и в `index.html`; при смене домена замените его там же).
 Неизвестный адрес показывает страницу «Էջը չի գտնվել».
 
 ## Тестовый режим

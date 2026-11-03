@@ -21,7 +21,7 @@ const COMMON_WORDS = new Set([
   'soccer', 'superman', 'batman', 'starwars', 'trustno', 'freedom', 'whatever', 'shadow', 'secret', 'summer', 'winter', 'spring',
   'autumn', 'michael', 'jennifer', 'charlie', 'jordan', 'killer', 'pokemon', 'naruto', 'google', 'facebook', 'instagram', 'apple',
   'samsung', 'computer', 'internet', 'test', 'testing', 'default', 'changeme', 'guest', 'qazwsx', 'zaqxsw', 'asdfgh', 'zxcvbn',
-  'abc', 'abcd', 'armenia', 'hayastan', 'yerevan', 'erevan', 'ararat', 'mangal', 'khorovats', 'xorovac', 'shashlik', 'shashlyk',
+  'abc', 'abcd', 'armenia', 'hayastan', 'yerevan', 'erevan', 'ararat', 'mangal', 'misumterq', 'khorovats', 'xorovac', 'shashlik', 'shashlyk',
   'jermuk', 'privet', 'parolchik', 'mypassword', 'mypass', 'newpassword',
 ])
 /** Эти куски недопустимы даже внутри пароля: «MyPassword», «Qwerty#2026», «ILoveYou!». */

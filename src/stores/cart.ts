@@ -65,7 +65,15 @@ export const useCart = defineStore('cart', {
   getters: {
     count: (s): number => s.items.reduce((n, i) => n + i.qty, 0),
     // price здесь — только для показа: сервер пересчитывает цены сам (у бонусных товаров price = 0)
-    subtotal: (s): number => s.items.reduce((n, i) => n + i.price * i.qty, 0),
+    subtotal(): number { return this.items.reduce((n, i) => n + i.price * i.qty, 0) + (this.pack ? this.pack.price * this.pack.qty : 0) },
+    /** Весь шашлык из окна шашлыка в корзине, кг. */
+    kebabKg: (s): number => s.items.reduce((n, i) => n + (i.kind === 'kebab' && i.kebab ? i.kebab.kg * i.qty : 0), 0),
+    /** «Լավաշ + աման»: один на каждые начатые 3 кг шашлыка — сервер добавит его к заказу сам, отдельной позицией. */
+    pack(): { name: string; price: number; qty: number } | null {
+      const p = useCatalog().kebab.pack
+      if (!p || !(this.kebabKg > 0)) return null
+      return { name: p.name, price: p.price, qty: Math.ceil(this.kebabKg / p.perKg - 1e-9) }
+    },
     /** Акция группы покупателя (новый, постоянный, VIP): скидка, баллы, бесплатная доставка. */
     perks: (): Perks => useBonus().perks,
     /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки. */
@@ -173,7 +181,7 @@ export const useCart = defineStore('cart', {
         added += item.qty
       }
       for (const it of order.items) {
-        if (it.kind === 'bonus') continue
+        if (it.kind === 'bonus' || it.kind === 'pack') continue
         const o = (it.options ?? {}) as KebabOptions
         const p = it.productId == null ? undefined : byId.get(it.productId)
         if (it.kind === 'kebab') {

@@ -4,4 +4,4 @@ Disallow: /admin
 Disallow: /account
 Disallow: /api/
 
-Sitemap: https://xanut.vercel.app/sitemap.xml
+Sitemap: https://misumterq.com/sitemap.xml
