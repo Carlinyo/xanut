@@ -12,5 +12,18 @@ export default defineConfig(({ mode }) => {
     plugins: [vue()],
     server: { proxy },
     preview: { proxy },
+    // Имена файлов сборки с хэшем длиннее обычного (10 знаков вместо 8): так все файлы один раз получили новые имена.
+    // Раньше /assets кэшировались на год без проверки, и браузер, открывший сайт в момент выкладки, мог запомнить
+    // ошибку вместо файла — сайт у него не открывался. Теперь браузер сверяет файлы с сервером (vercel.json),
+    // а под новыми именами старые испорченные записи кэша больше не используются.
+    build: {
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/[name]-[hash:10].js',
+          chunkFileNames: 'assets/[name]-[hash:10].js',
+          assetFileNames: 'assets/[name]-[hash:10][extname]',
+        },
+      },
+    },
   }
 })
