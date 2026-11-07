@@ -45,19 +45,14 @@ export interface Perks { discount: number; bonusPercent: number; freeDelivery: b
 /** Группа на месяц: сколько полученных заказов этого месяца нужно и от какой суммы каждый (товары без доставки). */
 export interface SegmentRules { regularOrders: number; regularMin: number; vipOrders: number; vipMin: number }
 export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
-export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; otpChannels?: Channel[]; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
+export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
   segments?: SegmentSettings
   /** Круг доставки вокруг магазина (нет у старого сервера). */
   zone?: DeliveryZone
   /** Дальняя доставка: адрес дальше overKm от магазина — fee ֏ (порог бесплатной доставки на неё не действует). */
   deliveryFar?: { overKm: number; fee: number }
   /** Оплата картой на сайте (AmeriaBank) включена на сервере. */
-  onlinePay?: boolean
-  /** Firebase для подтверждения телефона по SMS; нет — подтверждения по SMS на сайте нет. */
-  firebase?: FirebaseWebConfig
-  /** firebase — SMS для входа и регистрации отправляет Firebase из браузера. */
-  smsProvider?: 'firebase' }
-export interface FirebaseWebConfig { apiKey: string; authDomain: string; projectId: string; appId?: string }
+  onlinePay?: boolean }
 /** Способ оплаты: наличными, картой в магазине (самовывоз), картой на сайте (AmeriaBank). */
 export type PaymentMethod = 'cash' | 'card' | 'online'
 /** Онлайн-оплата заказа: pending — ждём банк, paid — оплачено, failed — не прошла (можно оплатить снова). */
@@ -74,21 +69,17 @@ export interface CartItem {
   /** Бонусный товар: цена одной штуки в баллах (price = 0). */
   points?: number
 }
-export type Channel = 'email' | 'phone'
 export interface PublicUser {
   id: string; name: string; email: string; phone: string; role?: string
-  twoFactorChannel?: Channel; emailVerified?: boolean; phoneVerified?: boolean
+  emailVerified?: boolean
   /** Сохранённый адрес доставки — подставляется при заказе. */
   address?: string | null
   /** Точка этого адреса на карте; null — адрес только текстом. */
   addressGeo?: GeoPoint | null
 }
-/** devCode приходит только в тестовом режиме (почта/SMS не настроены на сервере) — чтобы регистрацию можно было пройти. */
-export interface OtpChallenge { challengeId: string; channel: Channel; destination: string; expiresIn: number; resendIn: number; devCode?: string
-  /** firebase — SMS отправляет Firebase из браузера, вместо кода сервер ждёт подтверждение Firebase. */
-  provider?: 'firebase'
-  /** Номер целиком (для Firebase): при восстановлении пароля его нет — номер вводит сам покупатель. */
-  phone?: string }
+/** Код подтверждения отправлен на почту (destination — адрес со звёздочками).
+ *  devCode приходит только в тестовом режиме (почта не настроена на сервере) — чтобы регистрацию можно было пройти. */
+export interface OtpChallenge { challengeId: string; channel: 'email'; destination: string; expiresIn: number; resendIn: number; devCode?: string }
 /** productId — у товаров и бонусных товаров (нет у шашлыка и у очень старых заказов); options у шашлыка — см. KebabOptions. */
 export interface OrderItem { productId?: number | null; name: string; kind?: string; unitPrice: number; qty: number; points?: number; options: unknown }
 /** Параметры порции шашлыка в заказе: названия — для кухни; meat, kg, extraIds — чтобы повторить заказ (у старых заказов их нет). */
@@ -168,7 +159,7 @@ export interface AdminProduct {
 /** Клиент в админке: данные аккаунта, покупки, баллы и группа (назначенная вручную или по покупкам). */
 export interface AdminUser {
   id: string; name: string; email: string; phone: string; address: string | null; role: string; createdAt: string
-  emailVerified: boolean; phoneVerified: boolean
+  emailVerified: boolean
   segment: Segment; segmentManual: boolean; autoSegment: Segment
   /** Засчитано заказов в этом месяце: в постоянного и в VIP. */
   month?: { regular: number; vip: number }

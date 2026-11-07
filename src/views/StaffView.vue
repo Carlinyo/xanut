@@ -20,13 +20,15 @@ import type { AdminOrder } from '../types'
 import AdminOrderCard from '../components/molecules/AdminOrderCard.vue'
 import AppButton from '../components/atoms/AppButton.vue'
 
-// раз в 15 с (в фоновой вкладке — раз в минуту): каждый опрос — 3 чтения базы (сессия, пользователь, номер заказа)
+// раз в 15 с (в фоновой вкладке — раз в минуту): опрос — не больше одного чтения базы (номер последнего заказа и счётчик
+// правок; сервер ещё и помнит ответ несколько секунд), список — только когда что-то поменялось
 const POLL_MS = 15_000, HIDDEN_POLL_MS = 60_000
 const confirm = useConfirm(), authError = useAuthRedirect()
 // шапки сайта здесь нет — выход прямо на странице; после него — снова ко входу в этот раздел
 const logout = useLogout({ path: '/login', query: { redirect: '/staff' } })
 const orders = ref<AdminOrder[]>([])
-const lastId = ref(0)
+/** Что видели в прошлый раз: номер последнего заказа и счётчик правок заказов (orders/head). */
+let seen = { lastId: -1, changes: -1 }
 const loaded = ref(false)
 const loading = ref(false)
 const error = ref('')
@@ -48,13 +50,13 @@ async function load() {
   error.value = ''
   try {
     const before = new Map(orders.value.map((o) => [o.id, o]))
-    const r = await api<{ orders: AdminOrder[]; lastId: number }>('/staff/orders')
+    const r = await api<{ orders: AdminOrder[]; lastId: number; changes?: number }>('/staff/orders')
+    seen = { lastId: r.lastId, changes: r.changes ?? 0 }
     const added = loaded.value ? r.orders.filter((o) => !before.has(o.id) && isActive(o)).map((o) => o.id) : []
     // покупатель только что заплатил — заказ можно начинать готовить: подсветка и звонок, как у нового
     const paid = r.orders.filter((o) => { const b = before.get(o.id); return b && awaitingPay(b) && !awaitingPay(o) && isActive(o) }).map((o) => o.id)
     // шаг, нажатый только что, ещё в пути к серверу — заказ остаётся в новом статусе, а не прыгает обратно
     orders.value = r.orders.map((o) => (moving.has(o.id) && isActive(o) ? { ...o, status: moving.get(o.id)! } : o))
-    lastId.value = r.lastId
     loaded.value = true
     offline.value = false
     const ring = [...added, ...paid]
@@ -63,18 +65,23 @@ async function load() {
     if (!authError(e)) { if (loaded.value) offline.value = true; else error.value = t(commonErrorKey(e)) }
   } finally { loading.value = false }
 }
-// новые заказы: короткий запрос номера последнего заказа, список — только если он изменился;
-// есть заказы, ждущие оплату, — ещё и весь список раз в PAY_POLL_MS (сервер заодно спрашивает банк об их оплате).
-// Весь список — десятки чтений базы, номер — одно: на бесплатном тарифе Firestore это важно.
-const PAY_POLL_MS = 30_000
+// Новый заказ, смена статуса, оплата (и покупатель, вернувшийся из банка): короткий запрос номера последнего заказа и
+// счётчика правок, весь список — только если они изменились. Весь список — десятки чтений базы, опрос — одно.
+// Есть заказы, ждущие оплату, — ещё и весь список раз в PAY_POLL_MS: сервер заодно спросит банк о тех, кто заплатил,
+// но на сайт не вернулся (такая оплата сама счётчик не меняет).
+const PAY_POLL_MS = 120_000
 let lastFull = 0
 async function poll() {
   if (loading.value) return
-  if (orders.value.some(awaitingPay) && Date.now() - lastFull >= PAY_POLL_MS) { lastFull = Date.now(); return load() }
   try {
-    const { lastId: id } = await api<{ lastId: number }>('/staff/orders/head')
+    const head = await api<{ lastId: number; changes?: number }>('/staff/orders/head')
     offline.value = false
-    if (id !== lastId.value || !loaded.value) await load()
+    const changed = head.lastId !== seen.lastId || (head.changes ?? 0) !== seen.changes
+    seen = { lastId: head.lastId, changes: head.changes ?? 0 }
+    if (changed || !loaded.value || (orders.value.some(awaitingPay) && Date.now() - lastFull >= PAY_POLL_MS)) {
+      lastFull = Date.now()
+      await load()
+    }
   } catch (e) {
     if (!authError(e)) offline.value = true
   }

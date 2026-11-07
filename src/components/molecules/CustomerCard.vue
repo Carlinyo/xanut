@@ -41,7 +41,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
       </div>
       <div class="cu__contacts">
         <a :href="`mailto:${u.email}`">✉ {{ u.email }}<span v-if="u.emailVerified" class="cu__ok" :title="$t('admin.customers.verified')"> ✓</span></a>
-        <a :href="`tel:${u.phone}`">📞 {{ formatPhone(u.phone) }}<span v-if="u.phoneVerified" class="cu__ok" :title="$t('admin.customers.verified')"> ✓</span></a>
+        <a :href="`tel:${u.phone}`">📞 {{ formatPhone(u.phone) }}</a>
         <span v-if="u.address">📍 {{ u.address }}</span>
       </div>
       <dl class="cu__stats">

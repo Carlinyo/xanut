@@ -19,7 +19,7 @@ function onInput(i: number, e: Event) {
   const digits = typed && /^\d$/.test(typed) ? typed : el.value.replace(/\D/g, '')
   el.value = props.modelValue[i] ?? ''
   if (!digits) return
-  // при автозаполнении из SMS или вставке в одну ячейку приходит сразу несколько цифр
+  // при автозаполнении или вставке в одну ячейку приходит сразу несколько цифр
   set(props.modelValue.slice(0, i) + digits + props.modelValue.slice(i + digits.length))
 }
 function onKey(i: number, e: KeyboardEvent) {

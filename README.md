@@ -4,7 +4,7 @@
 
 ## Запуск
 
-Сначала запустите сервер (папка `merkhanut-api`: `npm install`, `npm run setup`, `npm run dev` — см. его README про Firebase). Затем здесь, во втором окне:
+Сначала запустите сервер (папка `merkhanut-api`: `npm install`, `npm run setup`, `npm run dev` — см. его README). Затем здесь, во втором окне:
 
 ```bash
 npm install
@@ -91,9 +91,9 @@ node tools/render-sketches.mjs       # public/img/cat/*.webp — каранда�
 - Как это устроено, покупателю рассказывает раздел «Առցանց վճարում» на странице «Մեր մասին» (`about.payment` в `hy.json`).
 - **Доставка дальше 5 км** — 2000 ֏ (без порога бесплатной доставки): корзина считает расстояние по точке на карте или по проверенному адресу (`cart.deliveryKm`), так же, как сервер.
 
-## Подтверждение телефона (Firebase)
+## Коды подтверждения
 
-Если на сервере настроен Firebase для SMS (`/api/config` → `firebase`), SMS с кодом отправляет Firebase прямо из браузера (`src/utils/firebasePhone.ts`; библиотека `firebase` загружается только в этот момент). Так работают вход и регистрация по телефону (`OtpStep.vue`), восстановление пароля (`ResetForm.vue` — номер вводит сам покупатель) и «Հաստատել SMS-ով» в личном кабинете (`PhoneVerify.vue`). Для reCAPTCHA и Firebase в `vercel.json` разрешены `google.com/recaptcha`, `gstatic.com/recaptcha`, `apis.google.com`, `identitytoolkit`/`securetoken.googleapis.com` и `*.firebaseapp.com`.
+Код подтверждения (регистрация, вход с нового устройства, восстановление пароля) приходит **только на почту** — SMS сайт не отправляет, телефон покупателя нужен лишь для связи и доставки. Шаг ввода кода — `OtpStep.vue` (вход и регистрация) и `ResetForm.vue` (новый пароль).
 
 ## Жалобы и предложения
 

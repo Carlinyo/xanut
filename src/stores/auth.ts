@@ -1,15 +1,15 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import type { Channel, OtpChallenge, PublicUser } from '../types'
+import type { OtpChallenge, PublicUser } from '../types'
 
-export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; channel: Channel; address?: string }
+export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; address?: string }
 export interface ProfileData { name?: string; phone?: string; address?: string }
 
 const isChallenge = (r: unknown): r is OtpChallenge => typeof r === 'object' && r !== null && 'challengeId' in r
 let restoring: Promise<void> | null = null // восстановление сессии при старте — один запрос на всё приложение
 
 // Сессия живёт в httpOnly-cookie на сервере; здесь хранится только профиль для интерфейса.
-// Вход и регистрация проходят в два шага: данные → код подтверждения (email или SMS) → сессия.
+// Вход и регистрация проходят в два шага: данные → код подтверждения на почту → сессия.
 export const useAuth = defineStore('auth', {
   state: () => ({ user: null as PublicUser | null }),
   getters: { isAuth: (s): boolean => s.user !== null },
@@ -34,26 +34,20 @@ export const useAuth = defineStore('auth', {
       this.user = r
       return null
     },
-    /** Шаг 2: код из письма или SMS — или, если SMS отправлял Firebase, его подтверждение ({ firebaseToken }). */
-    async verify(challengeId: string, proof: string | { firebaseToken: string }, trustDevice: boolean) {
-      const body = typeof proof === 'string' ? { challengeId, code: proof, trustDevice } : { challengeId, firebaseToken: proof.firebaseToken, trustDevice }
-      this.user = await api<PublicUser>('/auth/verify', { method: 'POST', body })
+    /** Шаг 2: код из письма. */
+    async verify(challengeId: string, code: string, trustDevice: boolean) {
+      this.user = await api<PublicUser>('/auth/verify', { method: 'POST', body: { challengeId, code, trustDevice } })
     },
     async resend(challengeId: string): Promise<{ expiresIn: number; resendIn: number; devCode?: string }> {
       return api('/auth/resend', { method: 'POST', body: { challengeId } })
     },
-    /** Забыли пароль, шаг 1: код на подтверждённую почту или телефон аккаунта. */
+    /** Забыли пароль, шаг 1: код на почту аккаунта. */
     async resetStart(email: string): Promise<OtpChallenge> {
       return api<OtpChallenge>('/auth/reset', { method: 'POST', body: { email } })
     },
     /** Шаг 2: код и новый пароль. Сервер закрывает все прежние сессии и сразу входит. */
-    async resetConfirm(challengeId: string, proof: string | { firebaseToken: string }, password: string) {
-      const body = typeof proof === 'string' ? { challengeId, code: proof, password } : { challengeId, firebaseToken: proof.firebaseToken, password }
-      this.user = await api<PublicUser>('/auth/reset/confirm', { method: 'POST', body })
-    },
-    /** Подтвердить телефон аккаунта: SMS-код проверил Firebase, сервер сверяет номер. */
-    async verifyPhone(firebaseToken: string) {
-      this.user = await api<PublicUser>('/auth/phone/verify', { method: 'POST', body: { firebaseToken } })
+    async resetConfirm(challengeId: string, code: string, password: string) {
+      this.user = await api<PublicUser>('/auth/reset/confirm', { method: 'POST', body: { challengeId, code, password } })
     },
     /** Мои данные: имя, телефон, адрес доставки. */
     async updateProfile(data: ProfileData) {

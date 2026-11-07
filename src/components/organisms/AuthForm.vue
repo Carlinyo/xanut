@@ -4,8 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { t } from '../../i18n'
 import { ApiError, commonErrorKey } from '../../api'
 import { useAuth } from '../../stores/auth'
-import { useCatalog } from '../../stores/catalog'
-import type { Channel, OtpChallenge } from '../../types'
+import type { OtpChallenge } from '../../types'
 import { passwordError, rules, serverFieldErrors } from '../../validators'
 import { checkPhone } from '../../utils/phone'
 import { suggestEmail } from '../../utils/email'
@@ -14,15 +13,11 @@ import PhoneField from '../molecules/PhoneField.vue'
 import PasswordField from '../molecules/PasswordField.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
-import ChannelPicker from '../molecules/ChannelPicker.vue'
 import OtpStep from './OtpStep.vue'
 
+// код подтверждения (регистрация и вход) приходит только на почту
 const props = withDefaults(defineProps<{ mode?: 'login' | 'register' }>(), { mode: 'login' })
-const route = useRoute(), router = useRouter(), auth = useAuth(), catalog = useCatalog()
-const channels = computed<Channel[]>(() => catalog.config.otpChannels?.length ? catalog.config.otpChannels : ['email'])
-const channel = ref<Channel>(channels.value[0])
-// настройки сервера приходят позже — канал всегда должен быть из разрешённых
-watch(channels, (list) => { if (!list.includes(channel.value)) channel.value = list[0] })
+const route = useRoute(), router = useRouter(), auth = useAuth()
 const challenge = ref<OtpChallenge | null>(null) // пока не null — показываем шаг ввода кода
 const isReg = computed(() => props.mode === 'register')
 
@@ -87,7 +82,7 @@ async function submit() {
     if (isReg.value) {
       const { name, email, phone, password, consent } = form
       const address = form.address.trim() || undefined
-      challenge.value = await auth.register({ name, email, phone, password, consent, channel: channel.value, address })
+      challenge.value = await auth.register({ name, email, phone, password, consent, address })
     } else {
       challenge.value = await auth.login(form.email, form.password)
       if (!challenge.value) router.push(redirect.value) // доверенное устройство: код не нужен
@@ -146,8 +141,7 @@ function onVerified() {
     />
     <button v-if="!isReg" type="button" class="auth__forgot" @click="forgot">{{ $t('auth.forgot') }}</button>
     <PasswordField v-if="isReg" v-model="form.confirm" :label="$t('auth.confirm')" :error="errors.confirm" autocomplete="new-password" @blur="onBlur('confirm')" />
-    <ChannelPicker v-if="isReg && channels.length > 1" v-model="channel" :channels="channels" :label="$t('otp.channelLabel')" />
-    <p v-else-if="isReg" class="auth__channel"><span aria-hidden="true">{{ channel === 'email' ? '✉️' : '📱' }}</span>{{ $t('otp.single.' + channel) }}</p>
+    <p v-if="isReg" class="auth__channel"><span aria-hidden="true">✉️</span>{{ $t('otp.single.email') }}</p>
     <AppToggle v-if="isReg" v-model="form.consent" :invalid="!!errors.consent">
       {{ $t('privacy.consentBefore') }}<RouterLink to="/privacy" target="_blank" rel="noopener">{{ $t('privacy.linkText') }}</RouterLink>{{ $t('privacy.consentAfter') }}
     </AppToggle>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// «Забыли пароль»: почта → код на подтверждённую почту или телефон аккаунта → новый пароль → сразу вход.
+// «Забыли пароль»: почта → код на почту аккаунта → новый пароль → сразу вход.
 // Сервер при этом закрывает все прежние сессии: если пароль знал кто-то чужой, он из аккаунта выйдет.
 import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -8,38 +8,13 @@ import { ApiError, commonErrorKey } from '../../api'
 import { useAuth } from '../../stores/auth'
 import type { OtpChallenge } from '../../types'
 import { passwordError, rules, serverFieldErrors } from '../../validators'
-import { checkPhone } from '../../utils/phone'
-import { firebaseErrorKey, phoneVerification } from '../../utils/firebasePhone'
 import FormField from '../molecules/FormField.vue'
-import PhoneField from '../molecules/PhoneField.vue'
 import PasswordField from '../molecules/PasswordField.vue'
 import OtpInput from '../molecules/OtpInput.vue'
 import AppButton from '../atoms/AppButton.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuth()
 
-// SMS через Firebase (код аккаунта по телефону): номер целиком сервер не раскрывает — покупатель вводит его сам,
-// Firebase отправляет на него SMS, а сервер сверяет подтверждённый номер с номером аккаунта.
-const recaptcha = ref<HTMLElement | null>(null)
-const fv = phoneVerification(() => recaptcha.value)
-const fb = reactive({ phone: '', sent: false, sending: false, error: '', token: '' })
-const viaFirebase = computed(() => challenge.value?.provider === 'firebase')
-onUnmounted(() => fv.dispose())
-async function sendSms() {
-  if (fb.sending) return
-  const p = checkPhone(fb.phone)
-  if (!p.ok) { fb.error = t('errors.phone'); return }
-  fb.sending = true
-  fb.error = ''
-  try {
-    await fv.send(p.e164)
-    Object.assign(fb, { sent: true, token: '' })
-    form.code = ''
-    startTimer(challenge.value?.resendIn || 60)
-  } catch (e) {
-    fb.error = t(firebaseErrorKey(e))
-  } finally { fb.sending = false }
-}
 const step = ref<'email' | 'code' | 'done'>('email')
 const challenge = ref<OtpChallenge | null>(null)
 // почту, введённую на странице входа, страница передаёт через состояние истории (не через адрес — он попадает в журналы)
@@ -49,7 +24,7 @@ const notFound = ref(false)
 const busy = ref(false)
 const expired = ref(false) // код истёк или исчерпаны попытки — только «начать заново»
 const info = ref('')
-const devCode = ref('') // тестовый режим: письмо и SMS не отправлялись, код показываем на экране
+const devCode = ref('') // тестовый режим: письмо не отправлялось, код показываем на экране
 const pwContext = computed(() => ({ email: form.email }))
 const passwordBox = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
@@ -94,9 +69,7 @@ async function sendCode() {
     Object.assign(form, { code: '', password: '', confirm: '' })
     expired.value = false
     info.value = ''
-    Object.assign(fb, { phone: '', sent: false, error: '', token: '' })
-    if (c.provider === 'firebase') { fv.dispose(); wait.value = 0 } // SMS ещё не отправлена: сначала номер
-    else startTimer(c.resendIn)
+    startTimer(c.resendIn)
     step.value = 'code'
   } catch (e) {
     const code = e instanceof ApiError ? e.code : ''
@@ -121,15 +94,7 @@ async function save() {
   if (errors.code || errors.password || errors.confirm) return
   busy.value = true
   try {
-    if (viaFirebase.value) {
-      // код проверяет Firebase; подтверждение храним: если сервер отклонит пароль, повторно вводить код не нужно
-      if (!fb.token) {
-        try { fb.token = await fv.confirm(form.code) } catch (e) { errors.code = t(firebaseErrorKey(e)); form.code = ''; return }
-      }
-      await auth.resetConfirm(challenge.value.challengeId, { firebaseToken: fb.token }, form.password)
-    } else {
-      await auth.resetConfirm(challenge.value.challengeId, form.code, form.password)
-    }
+    await auth.resetConfirm(challenge.value.challengeId, form.code, form.password)
     Object.assign(form, { code: '', password: '', confirm: '' })
     step.value = 'done'
   } catch (e) {
@@ -137,8 +102,7 @@ async function save() {
     const code = err?.code ?? ''
     const fe = code === 'VALIDATION' ? serverFieldErrors(err?.issues) : {}
     if (fe.password) errors.password = fe.password // пароль из утечек или не по правилам — код при этом не потрачен
-    else if (code === 'PHONE_MISMATCH') { Object.assign(fb, { sent: false, token: '' }); form.code = ''; fb.error = t('phone.resetMismatch') }
-    else if (code === 'OTP_INVALID') { errors.code = t('otp.invalid'); form.code = ''; fb.token = '' }
+    else if (code === 'OTP_INVALID') { errors.code = t('otp.invalid'); form.code = '' }
     else if (code === 'OTP_EXPIRED' || code === 'OTP_LOCKED') { expired.value = true; errors.form = t(code === 'OTP_LOCKED' ? 'otp.locked' : 'otp.expired') }
     else errors.form = t(commonErrorKey(e))
   } finally { busy.value = false }
@@ -150,10 +114,6 @@ async function resend() {
   errors.form = ''
   info.value = ''
   resending.value = true
-  if (viaFirebase.value) { // SMS заново отправляет Firebase
-    try { await sendSms(); if (!fb.error) info.value = t('otp.resent') } finally { resending.value = false }
-    return
-  }
   try {
     const r = await auth.resend(challenge.value.challengeId)
     devCode.value = r.devCode ?? ''
@@ -199,19 +159,9 @@ function restart() {
     </form>
 
     <form v-else-if="step === 'code' && challenge" class="rs__step" novalidate @submit.prevent="save">
-      <span class="rs__icon" aria-hidden="true">{{ challenge.channel === 'email' ? '✉️' : '📱' }}</span>
+      <span class="rs__icon" aria-hidden="true">✉️</span>
       <h1>{{ $t('reset.newTitle') }}</h1>
-      <p v-if="viaFirebase && !fb.sent" class="muted">{{ $t('phone.resetLead', { to: challenge.destination }) }}</p>
-      <p v-else class="muted">{{ $t(challenge.channel === 'email' ? 'otp.sentEmail' : 'otp.sentPhone', { to: challenge.destination }) }}</p>
-
-      <!-- SMS через Firebase: сначала свой номер (сервер его не показывает), потом код -->
-      <template v-if="viaFirebase && !fb.sent">
-        <PhoneField v-model="fb.phone" :label="$t('checkout.phone')" :error="fb.error" :valid="checkPhone(fb.phone).ok" />
-        <AppButton size="lg" block :disabled="fb.sending" @click="sendSms">{{ fb.sending ? $t('common.sending') : $t('phone.sendSms') }}</AppButton>
-        <div class="rs__links"><button type="button" class="rs__link" @click="restart">{{ $t('reset.changeEmail') }}</button></div>
-      </template>
-      <template v-else>
-      <p v-if="fb.error" class="rs__err" role="alert">{{ fb.error }}</p>
+      <p class="muted">{{ $t('otp.sentEmail', { to: challenge.destination }) }}</p>
 
       <div v-if="devCode" class="rs__dev" role="note">
         <b>🧪 {{ $t('otp.devTitle') }}</b>
@@ -238,10 +188,7 @@ function restart() {
         </button>
         <button type="button" class="rs__link" @click="restart">{{ $t('reset.changeEmail') }}</button>
       </div>
-      <p class="muted rs__hint">{{ $t(viaFirebase ? 'phone.hint' : 'otp.hint') }}</p>
-      </template>
-      <!-- невидимая проверка reCAPTCHA для SMS от Firebase (одна на оба шага: номер и код) -->
-      <div v-if="viaFirebase" ref="recaptcha" />
+      <p class="muted rs__hint">{{ $t('otp.hint') }}</p>
     </form>
 
     <div v-else class="rs__step rs__done" role="status">
