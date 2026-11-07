@@ -3,13 +3,16 @@
 // цвет ложится штрихами с зерном бумаги, контур — графитом, чуть дрожащей линией. Фон прозрачный.
 // Запуск (нужен sharp): node tools/render-sketches.mjs   → public/img/cat/<вид>.webp
 // Только некоторые: node tools/render-sketches.mjs fish rabbit
+// Те же сцены «кистью» (баннеры под «Հատուկ առաջարկներ» на главной): node tools/render-sketches.mjs --brush → public/img/brush/<вид>.webp
 import { createRequire } from 'node:module'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const sharp = require('sharp')
 
-const OUT = fileURLToPath(new URL('../public/img/cat/', import.meta.url))
+const ARGS = process.argv.slice(2)
+const BRUSH = ARGS.includes('--brush')
+const OUT = fileURLToPath(new URL(BRUSH ? '../public/img/brush/' : '../public/img/cat/', import.meta.url))
 mkdirSync(OUT, { recursive: true })
 
 const W = 800 // рабочий размер (сцены рисуются в 400×400 и растрируются вдвое крупнее)
@@ -47,22 +50,22 @@ function scatter(seed, n, [x0, y0, x1, y1], inside, r0, r1) {
 const inEllipse = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1
 
 /** Инструменты рисования одного слоя: 'color' — цвет, 'line' — контур (белые заливки закрывают линии позади). */
-function kit(pass) {
+function kit(pass, K = 1) { // K — во сколько раз толще контуры (кисти нужны толще карандаша)
   const C = pass === 'color'
   const join = 'stroke-linejoin="round" stroke-linecap="round"'
   return {
     /** фигура с заливкой и контуром толщины lw */
     f: (d, fill, lw = 5, a = '') => C ? `<path d="${d}" fill="${fill}" ${a}/>`
-      : `<path d="${d}" fill="#fff" stroke="${lw ? '#000' : 'none'}" stroke-width="${lw}" ${join} ${a}/>`,
+      : `<path d="${d}" fill="#fff" stroke="${lw ? '#000' : 'none'}" stroke-width="${lw * K}" ${join} ${a}/>`,
     /** только цвет: тень, блик, румянец */
     p: (d, fill, a = '') => (C ? `<path d="${d}" fill="${fill}" ${a}/>` : ''),
     /** цветной штрих */
     s: (d, color, w, a = '') => (C ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" ${join} ${a}/>` : ''),
     /** графитовая линия */
-    l: (d, w = 3, a = '') => (C ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w}" ${join} ${a}/>`),
+    l: (d, w = 3, a = '') => (C ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w * K}" ${join} ${a}/>`),
     /** толстая линия с контуром: сосиска, огурец, шампур */
     tube: (d, w, color, lw = 5, a = '') => C ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" ${a}/>`
-      : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w + 2 * lw}" stroke-linecap="round" ${a}/><path d="${d}" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" ${a}/>`,
+      : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w + 2 * lw * K}" stroke-linecap="round" ${a}/><path d="${d}" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" ${a}/>`,
     g: (t, ...xs) => `<g transform="${t}">${xs.join('')}</g>`,
   }
 }
@@ -455,10 +458,11 @@ function sample(a, x, y) {
   return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy
 }
 
-async function raster(kind, pass) {
-  const k = kit(pass)
+/** tf — сдвиг и масштаб сцены (кисть вписывает рисунок в подложку сама), K — толщина контуров. */
+async function raster(kind, pass, { tf = "translate(0 0)", K = 1 } = {}) {
+  const k = kit(pass, K)
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}" viewBox="0 0 400 400"><defs>${DEFS}</defs>` +
-    `${pass === 'line' ? '<rect width="400" height="400" fill="#fff"/>' : ''}${scenes[kind](k)}</svg>`
+    `${pass === 'line' ? '<rect width="400" height="400" fill="#fff"/>' : ''}<g transform="${tf}">${scenes[kind](k)}</g></svg>`
   const { data } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   return data
 }
@@ -538,10 +542,249 @@ async function save(kind, rgba) {
     .toFile(OUT + kind + '.webp')
 }
 
-const only = process.argv.slice(2)
+// ───────────────────────── кисть ─────────────────────────
+// Те же сцены гуашью. Картина складывается из отдельных мазков, как у художника: сначала широкая кисть по всему
+// рисунку, потом средняя и тонкая — только там, где широкая не передала цвет или деталь. Мазок — изогнутая лента:
+// идёт вдоль формы (по краям и цветовым границам рисунка), начинается с нажима и сходит на нет; в нём видны следы
+// щетины, край чуть рваный. Контур — тушью: то толще, то тоньше, местами «сухая кисть» его рвёт.
+// Под рисунком — круглый мазок светлой краски (щетина идёт по кругу), вне его прозрачно: баннер тёмный.
+
+const DISC = 0.455 // радиус подложки — доля ширины картинки
+const FIT = 0.86 // рисунок не дальше этой доли радиуса подложки от центра
+const LINE_K = 0.85 // контур кисти тоньше карандашного: главное — мазки
+const INK = [0.24, 0.15, 0.1]
+const PAPER = [0.975, 0.94, 0.87]
+/** Кисти по очереди: шаг сетки, ширина и длина мазка (px рабочего холста), волоски щетины, с какой ошибки цвета нужна. */
+const BRUSHES = [
+  { step: 14, w: 26, len: 64, bristles: 8, err: 0 },
+  { step: 7, w: 12, len: 32, bristles: 4, err: 0.09 },
+  { step: 3, w: 4.5, len: 12, bristles: 0, err: 0.11 },
+]
+const ss = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t) }
+
+/** Размытие: два прохода «ящиком» радиуса r (почти гаусс). */
+function boxBlur(src, r) {
+  let a = src
+  const at = (v) => (v < 0 ? 0 : v >= W ? W - 1 : v), n = 2 * r + 1
+  for (let pass = 0; pass < 2; pass++) {
+    const h = new Float32Array(W * W), v = new Float32Array(W * W)
+    for (let y = 0; y < W; y++) {
+      let s = 0
+      for (let x = -r; x <= r; x++) s += a[y * W + at(x)]
+      for (let x = 0; x < W; x++) { h[y * W + x] = s / n; s += a[y * W + at(x + r + 1)] - a[y * W + at(x - r)] }
+    }
+    for (let x = 0; x < W; x++) {
+      let s = 0
+      for (let y = -r; y <= r; y++) s += h[at(y) * W + x]
+      for (let y = 0; y < W; y++) { v[y * W + x] = s / n; s += h[at(y + r + 1) * W + x] - h[at(y - r) * W + x] }
+    }
+    a = v
+  }
+  return a
+}
+
+/** Как вписать сцену в подложку: по пробному растру — рамка рисунка и самая дальняя от её центра точка. */
+async function placement(kind) {
+  const px = await raster(kind, 'color')
+  let x0 = W, y0 = W, x1 = 0, y1 = 0
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 10) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
+  const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2
+  let reach = 0
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (px[(y * W + x) * 4 + 3] > 10) reach = Math.max(reach, Math.hypot(x + 0.5 - cx, y + 0.5 - cy))
+  const u = 400 / W // пиксели пробного растра → единицы сцены
+  const s = Math.min((400 * DISC * FIT) / (reach * u), (400 * DISC * 2 * 0.86) / (Math.max(x1 - x0, y1 - y0) * u))
+  return { tf: `translate(200 200) scale(${s.toFixed(4)}) translate(${(-cx * u).toFixed(2)} ${(-cy * u).toFixed(2)})`, K: LINE_K / s }
+}
+
+/** Направление мазков в каждой точке: вдоль краёв и цветовых границ рисунка (тензор структуры),
+ *  вдали от них — плавное «общее» направление руки. Угол в радианах. */
+function flowField(ca, lumA, seed) {
+  const N = W * W, f = new Float32Array(N)
+  for (let i = 0; i < N; i++) f[i] = ca[i] * (0.4 + 0.6 * lumA[i])
+  const b = boxBlur(f, 3)
+  const jxx = new Float32Array(N), jxy = new Float32Array(N), jyy = new Float32Array(N)
+  for (let y = 1; y < W - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x, gx = (b[i + 1] - b[i - 1]) / 2, gy = (b[i + W] - b[i - W]) / 2
+      jxx[i] = gx * gx; jxy[i] = gx * gy; jyy[i] = gy * gy
+    }
+  }
+  const sxx = boxBlur(jxx, 14), sxy = boxBlur(jxy, 14), syy = boxBlur(jyy, 14)
+  const ang = new Float32Array(N), EPS = 4e-5
+  for (let y = 0; y < W; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+      const hand = (-35 * Math.PI) / 180 + (vnoise(x / 220, y / 220, seed + 41) - 0.5) * 1.2 // направление мазка «от руки»
+      const g = hand + Math.PI / 2 // ему соответствует градиент поперёк
+      const a = sxx[i] + EPS * Math.cos(g) ** 2, c = syy[i] + EPS * Math.sin(g) ** 2, bxy = sxy[i] + EPS * Math.cos(g) * Math.sin(g)
+      ang[i] = 0.5 * Math.atan2(2 * bxy, a - c) + Math.PI / 2
+    }
+  }
+  return ang
+}
+
+/** Мазки одной кисти. Каждый — лента вдоль поля направлений; обрывается, где цвет рисунка сменился или рисунок кончился. */
+function strokesFor(B, T, ang, rand, need) {
+  const { ca, r, g, b } = T
+  const at = (x, y) => Math.min(W - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))
+  const out = []
+  for (let gy = 0; gy < W; gy += B.step) {
+    for (let gx = 0; gx < W; gx += B.step) {
+      const x0 = gx + rand() * B.step, y0 = gy + rand() * B.step, i0 = at(x0, y0)
+      if (ca[i0] < 0.5 || !need(gx, gy, B.step)) continue
+      const col = [r[i0], g[i0], b[i0]]
+      const len = B.len * (0.75 + 0.5 * rand()), step = Math.max(2, B.w / 3.5)
+      // центральная линия: от точки в обе стороны вдоль поля
+      const pts = [[x0, y0]]
+      for (const sign of [1, -1]) {
+        let x = x0, y = y0, px = Math.cos(ang[i0]) * sign, py = Math.sin(ang[i0]) * sign
+        for (let d = 0; d < len / 2; d += step) {
+          const i = at(x, y)
+          let dx = Math.cos(ang[i]), dy = Math.sin(ang[i])
+          if (dx * px + dy * py < 0) { dx = -dx; dy = -dy }
+          dx = 0.65 * dx + 0.35 * px; dy = 0.65 * dy + 0.35 * py
+          const n = Math.hypot(dx, dy) || 1
+          dx /= n; dy /= n
+          x += dx * step; y += dy * step
+          const j = at(x, y)
+          if (x < 0 || y < 0 || x >= W || y >= W || ca[j] < 0.35 || Math.hypot(r[j] - col[0], g[j] - col[1], b[j] - col[2]) > 0.16) break
+          if (sign > 0) pts.push([x, y]); else pts.unshift([x, y])
+          px = dx; py = dy
+        }
+      }
+      if (pts.length < 2) { const a = ang[i0], h = B.w * 0.35; pts.splice(0, 1, [x0 - Math.cos(a) * h, y0 - Math.sin(a) * h], [x0 + Math.cos(a) * h, y0 + Math.sin(a) * h]) }
+      // краска не идеально ровная: чуть светлее/темнее, теплее/холоднее
+      const v = 0.9 + 0.2 * rand(), t = (rand() - 0.5) * 0.06
+      out.push(ribbon(pts, B.w * (0.8 + 0.4 * rand()), [col[0] * v + t, col[1] * v, col[2] * v - t], B.bristles, rand))
+    }
+  }
+  // широкие мазки ложатся в случайном порядке, как у художника
+  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [out[i], out[j]] = [out[j], out[i]] }
+  return out
+}
+
+const rgb = (c) => `rgb(${c.map((v) => Math.round(clamp01(v) * 255)).join(',')})`
+/** Лента мазка вдоль pts шириной w: начало с нажимом, конец сходит на нет; поверх — волоски щетины. */
+function ribbon(pts, w, col, bristles, rand) {
+  const n = pts.length, L = [], Rt = [], norms = [], widths = []
+  for (let k = 0; k < n; k++) {
+    const [ax, ay] = pts[Math.max(0, k - 1)], [bx, by] = pts[Math.min(n - 1, k + 1)]
+    const l = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / l, ny = (bx - ax) / l
+    const t = n === 1 ? 0.5 : k / (n - 1)
+    const wt = w * (t < 0.15 ? 0.7 + 2 * t : t > 0.65 ? Math.max(0.25, 1 - 2.1 * (t - 0.65)) : 1)
+    norms.push([nx, ny]); widths.push(wt)
+    L.push(`${(pts[k][0] + nx * wt / 2).toFixed(1)} ${(pts[k][1] + ny * wt / 2).toFixed(1)}`)
+    Rt.push(`${(pts[k][0] - nx * wt / 2).toFixed(1)} ${(pts[k][1] - ny * wt / 2).toFixed(1)}`)
+  }
+  let s = `<path d="M${L.join('L')}L${Rt.reverse().join('L')}Z" fill="${rgb(col)}" fill-opacity="${(0.9 + 0.1 * rand()).toFixed(2)}"/>`
+  for (let q = 0; q < bristles; q++) {
+    const o = (rand() - 0.5) * 0.85, k0 = Math.floor(rand() * 0.3 * n), k1 = Math.max(k0 + 1, Math.ceil((0.6 + 0.4 * rand()) * (n - 1)))
+    const line = pts.slice(k0, k1 + 1).map(([x, y], m) => {
+      const k = k0 + m
+      return `${(x + norms[k][0] * widths[k] * o).toFixed(1)} ${(y + norms[k][1] * widths[k] * o).toFixed(1)}`
+    })
+    if (line.length < 2) continue
+    const dark = rand() < 0.6, c = dark ? col.map((v) => v * 0.72) : col.map((v) => v + (1 - v) * 0.4)
+    s += `<path d="M${line.join('L')}" fill="none" stroke="${rgb(c)}" stroke-width="${(1.2 + rand() * 1.8).toFixed(1)}" stroke-opacity="${(0.35 + 0.35 * rand()).toFixed(2)}" stroke-linecap="round"/>`
+  }
+  return s
+}
+
+/** Мазки → растр. Края мазков чуть рвёт шум (feDisplacementMap): у настоящей кисти край не гладкий. */
+async function paint(strokes, seed) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}" viewBox="0 0 ${W} ${W}"><defs>` +
+    `<filter id="rough" x="-2%" y="-2%" width="104%" height="104%"><feTurbulence type="fractalNoise" baseFrequency=".07" numOctaves="2" seed="${seed % 97}"/>` +
+    `<feDisplacementMap in="SourceGraphic" scale="4.5" xChannelSelector="R" yChannelSelector="G"/></filter></defs>` +
+    `<g filter="url(#rough)">${strokes.join('')}</g></svg>`
+  const { data } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  return data
+}
+
+async function brush(color, lines, seed) {
+  const N = W * W
+  const ca = new Float32Array(N), r = new Float32Array(N), g = new Float32Array(N), b = new Float32Array(N), lumA = new Float32Array(N), ink = new Float32Array(N)
+  for (let i = 0; i < N; i++) {
+    ca[i] = color[i * 4 + 3] / 255
+    r[i] = color[i * 4] / 255; g[i] = color[i * 4 + 1] / 255; b[i] = color[i * 4 + 2] / 255
+    lumA[i] = lum(color[i * 4], color[i * 4 + 1], color[i * 4 + 2]) / 255
+    ink[i] = 1 - lum(lines[i * 4], lines[i * 4 + 1], lines[i * 4 + 2]) / 255
+  }
+  const T = { ca, r, g, b }, ang = flowField(ca, lumA, seed), rand = rng(seed + 99)
+
+  // кисти по очереди: следующая кладёт мазки только в клетки, где цвет пока далёк от рисунка
+  const strokes = []
+  let done = null
+  for (const B of BRUSHES) {
+    const need = (gx, gy, step) => {
+      if (!done) return true
+      let e = 0, n = 0
+      for (let y = gy; y < Math.min(W, gy + step); y++) {
+        for (let x = gx; x < Math.min(W, gx + step); x++) {
+          const i = y * W + x
+          if (ca[i] < 0.5) continue
+          const a = done[i * 4 + 3] / 255
+          e += a < 0.5 ? 1 : Math.hypot(done[i * 4] / 255 - r[i], done[i * 4 + 1] / 255 - g[i], done[i * 4 + 2] / 255 - b[i]); n++
+        }
+      }
+      return n > 0 && e / n > B.err
+    }
+    strokes.push(...strokesFor(B, T, ang, rand, need))
+    done = await paint(strokes, seed)
+  }
+
+  const ib = boxBlur(ink, 2)
+  const C = W / 2, RD = W * DISC, TURN = 2 * Math.PI * RD
+  /** Шум вдоль круга без шва: у θ = ±π значения с двух концов дуги смешиваются. */
+  const ring = (arc, f) => { const w = ss(0.85 * TURN, TURN, arc); return f(arc) * (1 - w) + f(arc - TURN) * w }
+  const out = new Float32Array(N * 4)
+  for (let y = 0; y < W; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+
+      // ── подложка: один круговой мазок светлой краски
+      const dx = x - C, dy = y - C, rr = Math.hypot(dx, dy), th = Math.atan2(dy, dx), arc = (th + Math.PI) * RD
+      const edge = RD * (1 + 0.035 * (vnoise(Math.cos(th) * 2.4 + 9, Math.sin(th) * 2.4 + 9, seed + 31) - 0.5))
+      const dBr = ring(arc, (a) => vnoise(a / 70, rr / 2.2, seed + 32)), dBand = ring(arc, (a) => vnoise(a / 170, rr / 24, seed + 33))
+      const dA = ss(edge + 12, edge - 12, rr + (dBr - 0.5) * 30 + (dBand - 0.5) * 14)
+      const dk = (0.95 + 0.07 * dBand + 0.03 * (dBr - 0.5)) * (1 - 0.06 * ss(edge - 46, edge - 6, rr))
+      let R0 = PAPER[0] * dk * dA, G0 = PAPER[1] * dk * dA, B0 = PAPER[2] * dk * dA, A = dA
+
+      // ── мазки краски
+      const pa = done[i * 4 + 3] / 255
+      if (pa > 0) {
+        R0 = R0 * (1 - pa) + (done[i * 4] / 255) * pa; G0 = G0 * (1 - pa) + (done[i * 4 + 1] / 255) * pa; B0 = B0 * (1 - pa) + (done[i * 4 + 2] / 255) * pa
+        A = A * (1 - pa) + pa
+      }
+
+      // ── тушь: толщина гуляет (порог по размытой линии), рука чуть дрожит, местами сухая кисть рвёт линию
+      const lx = x + (vnoise(x / 55, y / 55, seed + 21) - 0.5) * 5, ly = y + (vnoise(x / 55, y / 55, seed + 22) - 0.5) * 5
+      const thr = 0.5 + (vnoise(x / 26, y / 26, seed + 23) - 0.5) * 0.62
+      let li = ss(thr - 0.1, thr + 0.1, sample(ib, lx, ly))
+      if (li > 0) {
+        li *= 1 - 0.7 * ss(0.66, 0.86, vnoise(x / 60, y / 60, seed + 24)) * ss(0.55, 0.25, vnoise(x / 2.5, y / 9, seed + 25))
+        li *= 0.84 + 0.16 * vnoise(x / 20, y / 20, seed + 26)
+        R0 = R0 * (1 - li) + INK[0] * li; G0 = G0 * (1 - li) + INK[1] * li; B0 = B0 * (1 - li) + INK[2] * li; A = A * (1 - li) + li
+      }
+      out[i * 4] = A ? R0 / A : 1; out[i * 4 + 1] = A ? G0 / A : 1; out[i * 4 + 2] = A ? B0 / A : 1; out[i * 4 + 3] = A
+    }
+  }
+  return out
+}
+
+async function saveBrush(kind, rgba) {
+  const buf = Buffer.alloc(W * W * 4)
+  for (let i = 0; i < buf.length; i++) buf[i] = Math.round(clamp01(rgba[i]) * 255)
+  await sharp(buf, { raw: { width: W, height: W, channels: 4 } }).resize(SIZE, SIZE, { kernel: 'lanczos3' })
+    .webp({ quality: 86, alphaQuality: 90, effort: 6 }).toFile(OUT + kind + '.webp')
+}
+
+const only = ARGS.filter((a) => !a.startsWith('--'))
 for (const kind of Object.keys(scenes).filter((k) => !only.length || only.includes(k))) {
   const seed = [...kind].reduce((s, ch) => (s * 31 + ch.charCodeAt(0)) & 0xffff, 7) // свои штрихи у каждого рисунка, но всегда одни и те же
   const t = Date.now()
-  await save(kind, pencil(await raster(kind, 'color'), await raster(kind, 'line'), seed))
+  if (BRUSH) {
+    const at = await placement(kind)
+    await saveBrush(kind, await brush(await raster(kind, 'color', at), await raster(kind, 'line', at), seed))
+  } else await save(kind, pencil(await raster(kind, 'color'), await raster(kind, 'line'), seed))
   console.log(`${kind}.webp  ${Date.now() - t} мс`)
 }

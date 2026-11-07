@@ -22,3 +22,9 @@ export const CATEGORY_ARTS = ['kebab', 'ribs', 'steak', 'lamb', 'chicken', 'fish
 export function categorySketchUrl(art: string): string | undefined {
   return CATEGORY_ARTS.includes(art) ? `/img/cat/${art}.webp` : undefined
 }
+
+/** Тот же рисунок «кистью», гуашью, на круглом мазке светлой краски (public/img/brush, render-sketches.mjs --brush):
+ *  баннеры под «Հատուկ առաջարկներ» на главной. undefined — такого нет. */
+export function categoryBrushUrl(art: string): string | undefined {
+  return CATEGORY_ARTS.includes(art) ? `/img/brush/${art}.webp` : undefined
+}

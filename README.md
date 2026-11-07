@@ -47,6 +47,7 @@ npm i -D playwright sharp && npx playwright install chromium
 node tools/render-art.mjs            # public/img/art/*.webp
 node tools/render-backgrounds.mjs    # public/img/bg/*.webp
 node tools/render-sketches.mjs       # public/img/cat/*.webp — карандашные рисунки плиток «Տեսականի» (только sharp)
+node tools/render-sketches.mjs --brush   # public/img/brush/*.webp — те же рисунки кистью, для баннеров (только sharp)
 ```
 
 Фотографии товаров кладутся в `public/img/art` (какое фото у какого рисунка — `src/utils/art.ts`). После добавления новых запустите `node tools/shrink-photos.mjs` (нужен только `sharp`): он уменьшит крупные до 1000 px по длинной стороне — фото с телефона весит 2–3 МБ, после — около 200 КБ.
@@ -54,7 +55,7 @@ node tools/render-sketches.mjs       # public/img/cat/*.webp — каранда�
 Фото напитков лежат в подпапках `public/img/art/wines`, `Vodka`, `cognac` (уже в `.webp`, до 1000 px; исходные PNG по 1–2 МБ перенесены в `photo-originals/` — эта папка в git не попадает и на сайт не выкладывается, её можно удалить). `shrink-photos.mjs` обрабатывает только саму `public/img/art`, без подпапок: новые фото в подпапках уменьшайте так же — до 1000 px и в `.webp`.
 
 Плитки «Տեսականի» на главной у мясных разделов — животные: свинья (`ribs`), корова (`steak`), овечка (`lamb`), курица (`chicken`), рыба и кролик; у напитков — бутылки (`wine`, `vodka`, `cognac`). Все они — сцены в `tools/render-sketches.mjs`.
-Тёмные баннеры под «Հատուկ առաջարկներ» (`promos` в `hy.json`, `PromoGrid.vue`) показывают в белом круге тот же рисунок, что плитка их раздела (`cat`): поменяли рисунок раздела в админке — меняется и баннер.
+Тёмные баннеры под «Հատուկ առաջարկներ» (`promos` в `hy.json`, `PromoGrid.vue`) показывают рисунок своего раздела (`cat`), но нарисованный кистью: гуашь мазками, контур тушью, под рисунком — круглый мазок светлой краски (`public/img/brush`, `render-sketches.mjs --brush`; картинки сделаны для всех рисунков разделов). Поменяли рисунок раздела в админке — меняется и баннер.
 
 ## Бонусы
 
