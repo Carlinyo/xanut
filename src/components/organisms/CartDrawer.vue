@@ -19,8 +19,8 @@ import type { CartItem } from '../../types'
 
 const emit = defineEmits<{ close: [] }>()
 const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus(), confirm = useConfirm()
-/** Заказ принят: ok — как обычно; payLater — онлайн-оплата не открылась, оплатить можно из «Իմ հաշիվը». */
-const done = ref<'' | 'ok' | 'payLater'>('')
+/** Заказ принят: ok — как обычно; online — онлайн-оплата: оплатить, когда магазин примет заказ (в «Իմ հաշիվը»). */
+const done = ref<'' | 'ok' | 'online'>('')
 // дальняя доставка: подпись, пока адрес не выбран (выбран дальний — цена уже в итоге)
 const far = computed(() => catalog.config.deliveryFar)
 async function change(i: CartItem, delta: number) {
@@ -46,9 +46,9 @@ const methodOptions = computed(() => [
         <AppButton variant="close" :aria-label="$t('common.close')" @click="emit('close')">✕</AppButton>
       </header>
 
-      <p v-if="done" class="drawer__ok" :class="{ 'is-warn': done === 'payLater' }" role="status">
-        {{ $t(done === 'payLater' ? 'cart.donePayLater' : 'cart.done') }}
-        <RouterLink v-if="done === 'payLater'" to="/account" @click="emit('close')">{{ $t('account.mine') }} →</RouterLink>
+      <p v-if="done" class="drawer__ok" role="status">
+        {{ $t(done === 'online' ? 'cart.doneOnline' : 'cart.done') }}
+        <RouterLink v-if="done === 'online'" to="/account" @click="emit('close')">{{ $t('account.mine') }} →</RouterLink>
       </p>
       <p v-else-if="!cart.items.length" class="muted">{{ $t('cart.empty') }}</p>
 
@@ -107,7 +107,6 @@ h2 { margin:0; font-size:22px; }
 .drawer__method { margin-bottom:12px; }
 .drawer__pickup { margin:-4px 0 12px; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
 .drawer__ok { padding:14px; border-radius:var(--r-md); background:#e8f6ec; color:var(--green); font-weight:700; animation:rise .5s var(--ease); }
-.drawer__ok.is-warn { background:var(--cream); color:#7a5600; }
 .drawer__ok a { display:inline-block; margin-top:6px; text-decoration:underline; text-underline-offset:2px; }
 .sum { display:grid; grid-template-columns:1fr auto; gap:8px; margin:0; padding:14px; border-radius:var(--r-md); background:var(--bg); }
 .sum dt { color:var(--muted); }

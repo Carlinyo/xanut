@@ -13,9 +13,12 @@ export function paymentLabel(method: string, delivery?: string): string {
 /** Страница оплаты — только на сайте банка (адрес присылает наш сервер, но уводить покупателя куда-то ещё нельзя). */
 export const isBankUrl = (url: string): boolean => /^https:\/\/(services|servicestest)\.ameriabank\.am\//.test(url)
 
-/** Заказ с онлайн-оплатой ещё можно оплатить (не оплачен и не отменён). */
-export const canPay = (o: Pick<Order, 'payment' | 'paid' | 'status' | 'pay'>): boolean =>
+/** Онлайн-заказ ещё не оплачен (и не отменён). */
+export const awaitingPay = (o: Pick<Order, 'payment' | 'paid' | 'status' | 'pay'>): boolean =>
   o.payment === 'online' && o.paid !== true && o.pay?.state !== 'paid' && o.status !== 'cancelled'
+
+/** Онлайн-заказ можно оплатить: магазин его уже принял (порядок: заказ → магазин принял → оплата → готовят). */
+export const canPay = (o: Pick<Order, 'payment' | 'paid' | 'status' | 'pay'>): boolean => awaitingPay(o) && o.status !== 'new'
 
 /** «Оплатить» ещё раз: сервер сначала спросит банк о прошлой попытке. payUrl нет — заказ уже оплачен (order — свежий). */
 export const startPayment = (orderId: number) => api<{ order: Order; payUrl?: string }>(`/orders/${orderId}/pay`, { method: 'POST', timeout: 30_000 })

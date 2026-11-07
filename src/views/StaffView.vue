@@ -1,7 +1,10 @@
 <script setup lang="ts">
-// Раздел работников: только заказы. Заказы в работе — ближайшие по времени первыми, кнопка «Готово» (покупателю уходит
-// письмо «заказ готов»); ниже — готовые за последние часы. Новые заказы появляются сами (раз в несколько секунд
-// спрашиваем номер последнего заказа) и звучит звонок. Отменить заказ, подтвердить оплату — только в админке.
+// Раздел работников: только заказы. Заказы в работе — ближайшие по времени первыми, у каждого — одна кнопка следующего
+// шага; ниже — готовые за последние часы. Онлайн-оплата: «Ընդունել» (покупателю — письмо «оплатите») → ждём оплату →
+// «Սկսել պատրաստել» → «Պատրաստ է» (письмо «заказ готов»). Остальные заказы — сразу «Պատրաստ է».
+// Новые заказы появляются сами (раз в несколько секунд спрашиваем номер последнего заказа) и звучит звонок; пока есть
+// заказы, ждущие оплату, спрашиваем весь список — так видно, что покупатель заплатил (тоже со звонком).
+// Отменить заказ, подтвердить оплату вручную — только в админке.
 // Страница открывается без сайта вокруг (meta.bare в router.ts): ни шапки, ни подвала, каталог не грузится.
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, ApiError, commonErrorKey } from '../api'
@@ -29,9 +32,13 @@ const error = ref('')
 const offline = ref(false)
 const fresh = ref<Set<number>>(new Set())
 const busy = ref<Set<number>>(new Set())
+/** Шаг, нажатый только что и ещё идущий к серверу: заказ уже показан в новом статусе. */
+const moving = new Map<number, string>()
 const results = ref<Record<number, { error?: string }>>({})
 
 const isActive = (o: AdminOrder) => o.status !== 'done' && o.status !== 'cancelled'
+/** Онлайн-заказ принят и ждёт оплату покупателя. */
+const awaitingPay = (o: AdminOrder) => isActive(o) && o.payment === 'online' && o.paid !== true && o.pay?.state !== 'paid'
 const active = computed(() => orders.value.filter(isActive).sort((a, b) => (a.time || a.createdAt).localeCompare(b.time || b.createdAt)))
 const done = computed(() => orders.value.filter((o) => o.status === 'done'))
 
@@ -39,22 +46,27 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const known = new Set(orders.value.map((o) => o.id))
+    const before = new Map(orders.value.map((o) => [o.id, o]))
     const r = await api<{ orders: AdminOrder[]; lastId: number }>('/staff/orders')
-    const added = loaded.value ? r.orders.filter((o) => !known.has(o.id) && isActive(o)).map((o) => o.id) : []
-    // «Готово», нажатое только что, ещё в пути к серверу — заказ остаётся в готовых, а не прыгает обратно
-    orders.value = r.orders.map((o) => (busy.value.has(o.id) && isActive(o) ? { ...o, status: 'done' } : o))
+    const added = loaded.value ? r.orders.filter((o) => !before.has(o.id) && isActive(o)).map((o) => o.id) : []
+    // покупатель только что заплатил — заказ можно начинать готовить: подсветка и звонок, как у нового
+    const paid = r.orders.filter((o) => { const b = before.get(o.id); return b && awaitingPay(b) && !awaitingPay(o) && isActive(o) }).map((o) => o.id)
+    // шаг, нажатый только что, ещё в пути к серверу — заказ остаётся в новом статусе, а не прыгает обратно
+    orders.value = r.orders.map((o) => (moving.has(o.id) && isActive(o) ? { ...o, status: moving.get(o.id)! } : o))
     lastId.value = r.lastId
     loaded.value = true
     offline.value = false
-    if (added.length) { added.forEach((id) => fresh.value.add(id)); playChime() }
+    const ring = [...added, ...paid]
+    if (ring.length) { ring.forEach((id) => fresh.value.add(id)); playChime() }
   } catch (e) {
     if (!authError(e)) { if (loaded.value) offline.value = true; else error.value = t(commonErrorKey(e)) }
   } finally { loading.value = false }
 }
-// новые заказы: короткий запрос номера последнего заказа, список — только если он изменился
+// новые заказы: короткий запрос номера последнего заказа, список — только если он изменился;
+// есть заказы, ждущие оплату, — весь список (сервер заодно спрашивает банк об их оплате)
 async function poll() {
   if (loading.value) return
+  if (orders.value.some(awaitingPay)) return load()
   try {
     const { lastId: id } = await api<{ lastId: number }>('/staff/orders/head')
     offline.value = false
@@ -80,32 +92,45 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGesture, { capture: true })
 })
 
-/** «Готово»: после подтверждения заказ сразу уходит в готовые — не ждём сервер, который сначала отправляет покупателю
- *  письмо (до ~15 с), работник уже занят следующим заказом. Не получилось — заказ возвращается в работу с причиной. */
-async function ready(o: AdminOrder) {
-  const ok = await confirm.ask({
+/** Кнопка карточки: новый статус → шаг на сервере. */
+const ACTION: Record<string, 'accept' | 'start' | 'done'> = { confirmed: 'accept', preparing: 'start', done: 'done' }
+const ERRORS: Record<string, string> = { ORDER_CANCELLED: 'admin.errors.cancelled', NOT_FOUND: 'admin.errors.notFound', NOT_PAID: 'staff.errors.notPaid' }
+
+/** «Պատրաստ է» — после подтверждения (покупателю уходит письмо); «Ընդունել» и «Սկսել պատրաստել» — сразу. */
+async function onStatus(o: AdminOrder, status: string) {
+  const action = ACTION[status]
+  if (!action) return
+  if (action === 'done' && !(await confirm.ask({
     icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), yes: t('admin.confirm.ready.yes'), text: t('staff.readyText'),
     rows: [
       { label: t('confirm.order.who'), value: `${o.name}, ${formatPhone(o.phone)}` },
       ...(o.time ? [{ label: t(o.delivery === 'pickup' ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(o.time, o.exactTime) }] : []),
       { label: t('cart.total'), value: money(o.total), strong: true },
     ],
-  })
-  if (!ok) return
+  }))) return
+  await move(o, status, action)
+}
+
+/** Шаг сразу виден на экране — не ждём сервер (он отправляет покупателю письмо, до ~15 с): работник уже занят
+ *  следующим заказом. Не получилось — заказ возвращается в прежний статус с причиной. */
+async function move(o: AdminOrder, status: string, action: 'accept' | 'start' | 'done') {
   busy.value.add(o.id)
+  moving.set(o.id, status)
   fresh.value.delete(o.id)
   delete results.value[o.id]
-  const setStatus = (status: string) => { orders.value = orders.value.map((x) => (x.id === o.id ? { ...x, status } : x)) }
-  setStatus('done')
+  const setStatus = (s: string) => { orders.value = orders.value.map((x) => (x.id === o.id ? { ...x, status: s } : x)) }
+  setStatus(status)
   try {
-    const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/done`, { method: 'POST', timeout: 40_000 }) // письмо может идти до ~15 с
+    const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/${action}`, { method: 'POST', timeout: 40_000 })
+    moving.delete(o.id)
     orders.value = orders.value.map((x) => (x.id === o.id ? r.order : x))
   } catch (e) {
+    moving.delete(o.id)
     setStatus(o.status)
     if (authError(e)) return
     const code = e instanceof ApiError ? e.code : ''
-    results.value[o.id] = { error: code === 'ORDER_CANCELLED' ? t('admin.errors.cancelled') : code === 'NOT_FOUND' ? t('admin.errors.notFound') : t(commonErrorKey(e)) }
-    if (code === 'ORDER_CANCELLED' || code === 'NOT_FOUND') void load()
+    results.value[o.id] = { error: t(ERRORS[code] ?? commonErrorKey(e)) }
+    if (code in ERRORS) void load() // заказ изменили в другом месте — показываем, как есть на сервере
   } finally {
     busy.value.delete(o.id)
   }
@@ -131,7 +156,7 @@ async function ready(o: AdminOrder) {
       <div v-else class="staff__list">
         <AdminOrderCard
           v-for="o in active" :key="o.id" staff :order="o" :busy="busy.has(o.id)" :fresh="fresh.has(o.id)" :result="results[o.id]"
-          @status="ready(o)"
+          @status="(s) => onStatus(o, s)"
         />
       </div>
       <template v-if="done.length">

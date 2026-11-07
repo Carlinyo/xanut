@@ -29,6 +29,15 @@ const payment = computed(() => paymentLabel(o.value.payment, o.value.delivery))
 /** Онлайн-оплата: ждём банк, не прошла, оплачено; у отменённого оплаченного — деньги нужно вернуть. */
 const online = computed(() => (o.value.payment === 'online' ? o.value.pay ?? null : null))
 const refund = computed(() => group.value === 'cancelled' && online.value?.state === 'paid')
+/** Следующий шаг заказа в работе. Онлайн-оплата: принять (accept) → покупатель платит (awaitPay) → начать готовить (start)
+ *  → готово (ready). У остальных заказов — сразу «Готово». */
+const step = computed<'accept' | 'awaitPay' | 'start' | 'ready' | null>(() => {
+  if (group.value !== 'active') return null
+  if (o.value.payment !== 'online') return 'ready'
+  if (o.value.status === 'new') return 'accept'
+  if (o.value.paid !== true && online.value?.state !== 'paid') return 'awaitPay'
+  return o.value.status === 'confirmed' ? 'start' : 'ready'
+})
 const mapUrl = computed(() => (o.value.geo ? `https://maps.google.com/?q=${o.value.geo.lat},${o.value.geo.lon}` : `https://maps.google.com/?q=${encodeURIComponent(o.value.address)}`))
 
 /** Детали шашлыка для кухни: маринад, добавки, комментарий покупателя. */
@@ -108,18 +117,33 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       </div>
     </div>
 
-    <!-- работник: только «Готово» -->
+    <!-- работник: один следующий шаг — «Ընդունել», ожидание оплаты, «Սկսել պատրաստել» или «Պատրաստ է» -->
     <footer v-if="staff" class="tk__act">
-      <AppButton v-if="group === 'active'" block size="lg" :disabled="busy" @click="emit('status', 'done')">
+      <template v-if="step === 'accept'">
+        <AppButton block size="lg" :disabled="busy" @click="emit('status', 'confirmed')">{{ busy ? $t('common.sending') : '✓ ' + $t('staff.accept') }}</AppButton>
+        <small class="tk__hint">{{ $t('staff.acceptHint') }}</small>
+      </template>
+      <p v-else-if="step === 'awaitPay'" class="tk__wait">⏳ {{ $t('staff.awaitPay') }}</p>
+      <AppButton v-else-if="step === 'start'" block size="lg" :disabled="busy" @click="emit('status', 'preparing')">
+        {{ busy ? $t('common.sending') : '🔥 ' + $t('staff.start') }}
+      </AppButton>
+      <AppButton v-else-if="step === 'ready'" block size="lg" :disabled="busy" @click="emit('status', 'done')">
         {{ busy ? $t('common.sending') : '✓ ' + $t('admin.ready') }}
       </AppButton>
       <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
-      <small v-if="unpaid && online" class="tk__hint">⚠ {{ $t('staff.notPaidOnline') }}</small>
       <p v-if="result?.error" class="tk__mailres is-bad" role="alert">{{ result.error }}</p>
     </footer>
     <footer v-else class="tk__act">
       <template v-if="group === 'active'">
-        <AppButton block size="lg" :disabled="busy" @click="emit('status', 'done')">
+        <!-- онлайн-заказ: сначала шаги оплаты; «Готово» админ может нажать и раньше (например, заплатили наличными) -->
+        <template v-if="step === 'accept' || step === 'start'">
+          <AppButton block size="lg" :disabled="busy" @click="emit('status', step === 'accept' ? 'confirmed' : 'preparing')">
+            {{ busy ? $t('common.sending') : step === 'accept' ? '✓ ' + $t('staff.accept') : '🔥 ' + $t('staff.start') }}
+          </AppButton>
+          <small v-if="step === 'accept'" class="tk__hint">{{ $t('staff.acceptHint') }}</small>
+        </template>
+        <p v-else-if="step === 'awaitPay'" class="tk__wait">⏳ {{ $t('staff.awaitPay') }}</p>
+        <AppButton block :size="step === 'ready' ? 'lg' : 'md'" :variant="step === 'ready' ? 'primary' : 'light'" :disabled="busy" @click="emit('status', 'done')">
           {{ busy ? $t('admin.email.sending') : '✓ ' + $t('admin.ready') }}
         </AppButton>
         <small class="tk__hint">{{ o.email ? $t('admin.readyHint', { email: o.email }) : $t('admin.noEmail') }}</small>
@@ -209,6 +233,8 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 .tk__link--danger:hover { color:var(--red); }
 .tk__link:disabled { opacity:.5; cursor:not-allowed; }
 .tk__done { margin:0; color:var(--green); font-size:18px; font-weight:800; }
+/* онлайн-заказ принят, ждём оплату покупателя — кнопки нет, готовить рано */
+.tk__wait { margin:0; padding:12px 14px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-weight:700; line-height:1.4; }
 .tk__mailres { margin:0; padding:8px 10px; border-radius:var(--r-sm); font-size:12.5px; line-height:1.4; overflow-wrap:anywhere; }
 .tk__mailres.is-ok { background:#e6f4ea; color:var(--green); }
 .tk__mailres.is-warn { background:var(--cream); color:#7a5600; }

@@ -186,6 +186,7 @@ function say(tone: 'ok' | 'warn' | 'bad', text: string) {
 onUnmounted(() => clearTimeout(noticeTimer))
 function report(id: number, status: string | null, email: EmailResult | null) {
   const head = status === 'done' ? t('admin.notice.done', { id }) : status === 'cancelled' ? t('admin.notice.cancelled', { id })
+    : status === 'confirmed' ? t('admin.notice.accepted', { id }) : status === 'preparing' && reopened !== id ? t('admin.notice.started', { id })
     : status ? t('admin.notice.reopened', { id }) : t('admin.notice.resent', { id })
   if (!email) return say('ok', head)
   if (email.status === 'sent') return say('ok', `${status ? head + ' ' : ''}${t('admin.email.sentNow', { email: email.to ?? '' })}`)
@@ -210,6 +211,8 @@ async function act(o: AdminOrder, run: () => Promise<void>) {
     busy.value.delete(o.id)
   }
 }
+/** Заказ, который возвращают из готовых в работу («preparing» из «done»), — уведомление «возвращён», а не «готовится». */
+let reopened: number | null = null
 /** Каждое действие с заказом — после подтверждения: «Готово» отправляет письмо, отмену не вернуть. status null — повтор письма. */
 function ask(o: AdminOrder, status: string | null): Promise<boolean> {
   const rows = [
@@ -223,6 +226,11 @@ function ask(o: AdminOrder, status: string | null): Promise<boolean> {
   if (status === 'cancelled') return confirm.ask({ icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }),
     text: t(paidOnline ? 'admin.confirm.cancel.textOnline' : 'admin.confirm.cancel.text'), rows,
     yes: t('admin.confirm.cancel.yes'), tone: 'danger' })
+  // онлайн-заказ: «Ընդունել» — покупателю уйдёт письмо «оплатите»; «Սկսել պատրաստել» — без вопроса
+  if (status === 'confirmed') return confirm.ask({ icon: '✅', title: t('admin.confirm.accept.title', { id: o.id }), text: t('admin.confirm.accept.text'), rows,
+    yes: t('admin.confirm.accept.yes') })
+  reopened = o.status === 'done' ? o.id : null
+  if (status === 'preparing' && o.status !== 'done') return Promise.resolve(true)
   if (status) return confirm.ask({ icon: '↩️', title: t('admin.confirm.reopen.title', { id: o.id }), text: t('admin.confirm.reopen.text'), yes: t('admin.confirm.reopen.yes') })
   return confirm.ask({ icon: '✉️', title: t('admin.confirm.resend.title', { id: o.id }), text: t('admin.confirm.resend.text', { email: o.email ?? '' }), yes: t('admin.confirm.resend.yes') })
 }

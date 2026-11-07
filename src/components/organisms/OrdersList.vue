@@ -8,7 +8,7 @@ import { useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
 import { ApiError, commonErrorKey } from '../../api'
-import { canPay, goToBank, paymentLabel, startPayment } from '../../utils/payment'
+import { awaitingPay, canPay, goToBank, paymentLabel, startPayment } from '../../utils/payment'
 import type { Order, OrderMark, OrderReview } from '../../types'
 import ReviewForm from '../molecules/ReviewForm.vue'
 import StarRating from '../atoms/StarRating.vue'
@@ -39,7 +39,8 @@ async function repeat(o: Order) {
   if (added) ui.cartOpen = true
 }
 
-/** Онлайн-оплата не прошла или страницу банка закрыли — оплатить снова (сервер сначала спросит банк о прошлой попытке). */
+/** «Վճարել առցանց»: магазин принял заказ — платим на странице банка. Повторно (прошлая попытка не прошла, страницу банка
+ *  закрыли) — сервер сначала спросит банк о прошлой попытке. */
 const paying = ref<number | null>(null)
 async function pay(o: Order) {
   if (paying.value) return
@@ -51,7 +52,8 @@ async function pay(o: Order) {
     notes[o.id] = { text: t('pay.alreadyPaid'), ok: true }
   } catch (e) {
     const code = e instanceof ApiError ? e.code : ''
-    notes[o.id] = { text: t(code === 'PAYMENT_INIT_FAILED' ? 'pay.initFailed' : code === 'ORDER_CANCELLED' ? 'pay.cancelled' : commonErrorKey(e)), ok: false }
+    const key = { PAYMENT_INIT_FAILED: 'pay.initFailed', ORDER_CANCELLED: 'pay.cancelled', NOT_ACCEPTED: 'pay.notAccepted' }[code] ?? commonErrorKey(e)
+    notes[o.id] = { text: t(key), ok: false }
   } finally { if (paying.value === o.id) paying.value = null }
 }
 </script>
@@ -74,10 +76,12 @@ async function pay(o: Order) {
       <small v-if="o.time">🕘 {{ formatSlot(o.time, o.exactTime) }}</small>
       <small>💳 {{ paymentLabel(o.payment, o.delivery) }}<template v-if="o.pay?.card"> · {{ o.pay.card }}</template></small>
       <small v-if="o.comment">💬 {{ o.comment }}</small>
-      <div v-if="canPay(o)" class="orders__paynow">
-        <small>{{ $t(o.pay?.state === 'failed' ? 'pay.failedNote' : 'pay.pendingNote') }}</small>
+      <div v-if="canPay(o)" class="orders__paynow" :class="{ 'is-failed': o.pay?.state === 'failed' }">
+        <small>{{ $t(o.pay?.state === 'failed' ? 'pay.failedNote' : 'pay.acceptedNote') }}</small>
         <AppButton size="sm" :disabled="paying === o.id" @click="pay(o)">💳 {{ paying === o.id ? $t('pay.opening') : $t('pay.payNow') }}</AppButton>
       </div>
+      <!-- онлайн-заказ ещё не принят магазином: платить рано — кнопка появится сама (страница обновляет заказы) -->
+      <small v-else-if="awaitingPay(o) && o.status === 'new'" class="orders__wait">⏳ {{ $t('pay.awaitAccept') }}</small>
       <small v-if="o.discount" class="orders__disc">🏷 {{ discountLabel(o.segment) }}՝ −{{ money(o.discount) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">
         <span v-if="o.bonus.earned">⭐ {{ $t('bonus.earned', { n: o.bonus.earned.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }} · {{ $t('bonus.state.' + o.bonus.state) }}</span>
@@ -129,6 +133,10 @@ small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__review q { overflow-wrap:anywhere; white-space:pre-line; }
 .orders__thanks { color:var(--green); font-weight:700; }
 .orders__write { align-self:flex-start; margin-top:6px; }
-.orders__paynow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:4px; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; }
-.orders__paynow small { flex:1 1 200px; color:var(--red); font-weight:600; }
+/* магазин принял заказ — оплатите (жёлтый); прошлая попытка не прошла — красный */
+.orders__paynow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:4px; padding:10px 12px; border-radius:var(--r-md); background:var(--cream); }
+.orders__paynow small { flex:1 1 200px; color:#7a5600; font-weight:600; }
+.orders__paynow.is-failed { background:#fdecea; }
+.orders__paynow.is-failed small { color:var(--red); }
+.orders__wait { color:#7a5600; font-weight:600; }
 </style>

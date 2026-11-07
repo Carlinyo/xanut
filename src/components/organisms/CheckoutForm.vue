@@ -15,7 +15,7 @@ import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
 import { distanceKm, GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
-import { goToBank, paymentLabel } from '../../utils/payment'
+import { paymentLabel } from '../../utils/payment'
 import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
 import SlotPicker from '../molecules/SlotPicker.vue'
@@ -26,8 +26,8 @@ import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AddressMapPicker from './AddressMapPicker.vue'
 import type { GeoPoint, PaymentMethod, PickerDay } from '../../types'
 
-/** done: ok — заказ принят; payLater — принят, но страница оплаты банка не открылась (оплатить можно из «Իմ հաշիվը»). */
-const emit = defineEmits<{ done: [result: 'ok' | 'payLater'] }>()
+/** done: ok — заказ принят; online — принят с онлайн-оплатой: платить можно, когда магазин его примет (придёт письмо). */
+const emit = defineEmits<{ done: [result: 'ok' | 'online'] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as PaymentMethod, comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
@@ -248,10 +248,8 @@ function summary(): ConfirmOptions {
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
   const pay = form.payment === 'online'
   return { icon: '🧾', title: t('confirm.order.title'), text: t(pay ? 'confirm.order.textOnline' : 'confirm.order.text'), rows,
-    yes: t(pay ? 'confirm.order.yesOnline' : 'confirm.order.yes'), no: t('confirm.order.no') }
+    yes: t('confirm.order.yes'), no: t('confirm.order.no') }
 }
-/** Открывается страница оплаты банка: форма заблокирована, пока браузер уходит на неё. */
-const redirecting = ref(false)
 
 async function submit() {
   if (busy.value) return
@@ -278,14 +276,9 @@ async function submit() {
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
     void bonus.load() // новые «ожидающие» баллы
-    // онлайн-оплата: заказ принят — корзину очищаем и уходим на страницу оплаты банка (оттуда банк вернёт на /payment/return)
-    if (order.payUrl && goToBank(order.payUrl)) {
-      redirecting.value = true
-      cart.clear()
-      return
-    }
+    // онлайн-оплата — не сейчас: сначала магазин примет заказ, покупателю придёт письмо, и он оплатит из «Իմ հաշիվը»
     // сначала «заказ принят», потом очистка: пустая корзина убирает эту форму, и событие из убранной формы Vue уже не доставит
-    emit('done', payment === 'online' ? 'payLater' : 'ok')
+    emit('done', payment === 'online' ? 'online' : 'ok')
     cart.clear()
   } catch (e) {
     await fail(e)
@@ -349,8 +342,8 @@ async function submit() {
     <FormField v-model="form.comment" as="textarea" rows="2" maxlength="300" :label="$t('checkout.comment')" :placeholder="$t('checkout.commentPlaceholder')" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
-    <AppButton type="submit" size="lg" block :disabled="busy || redirecting">
-      {{ redirecting ? $t('checkout.toBank') : busy ? $t('common.sending') : $t(form.payment === 'online' ? 'checkout.submitOnline' : 'checkout.submit') }}
+    <AppButton type="submit" size="lg" block :disabled="busy">
+      {{ busy ? $t('common.sending') : $t('checkout.submit') }}
     </AppButton>
     <Teleport to="body">
       <Transition name="overlay">

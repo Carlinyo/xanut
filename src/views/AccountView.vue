@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api'
+import { awaitingPay } from '../utils/payment'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
@@ -30,6 +31,20 @@ onMounted(async () => {
   }
   finally { loading.value = false }
 })
+// неоплаченный онлайн-заказ: ждём, пока магазин его примет (тогда появится «Վճարել առցանց»), и итог оплаты —
+// заказы обновляются сами раз в 20 с, пока страница открыта и видна
+const POLL_MS = 20_000
+let poll: ReturnType<typeof setInterval> | undefined
+const waiting = computed(() => orders.value.some(awaitingPay))
+async function refresh() {
+  if (document.visibilityState !== 'visible') return
+  try { orders.value = await api<Order[]>('/orders') } catch { /* нет сети — в следующий раз */ }
+}
+watch(waiting, (w) => {
+  clearInterval(poll)
+  poll = w ? setInterval(() => void refresh(), POLL_MS) : undefined
+}, { immediate: true })
+onUnmounted(() => clearInterval(poll))
 const logout = useLogout()
 /** Отзыв отправлен — заказ показывает его вместо кнопки. */
 function reviewed(id: number, review: OrderReview) {

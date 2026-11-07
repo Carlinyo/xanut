@@ -43,7 +43,10 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuth()
-  if (to.meta.auth || to.meta.guest) await auth.restore() // вошёл ли человек, станет известно после ответа /auth/me
+  // кто вошёл — станет известно после ответа /auth/me (один запрос на всё приложение, идёт параллельно с каталогом)
+  await auth.restore()
+  // работнику открыт только раздел заказов: любой другой адрес (главная, каталог, кабинет…) ведёт туда
+  if (auth.user?.role === 'worker' && to.path !== '/staff') return '/staff'
   if (to.meta.auth && !auth.isAuth) return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.admin && auth.user?.role !== 'admin') return '/' // админка — только для роли admin (сервер проверяет то же самое)
   if (to.meta.staff && auth.user?.role !== 'worker' && auth.user?.role !== 'admin') return '/'
