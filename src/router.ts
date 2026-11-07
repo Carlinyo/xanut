@@ -1,15 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuth } from './stores/auth'
 import { t } from './i18n'
+// Главная — статически (это страница входа на сайт: грузим сразу, без лишнего запроса за чанком).
 import HomeView from './views/HomeView.vue'
-import CatalogView from './views/CatalogView.vue'
-import ProductView from './views/ProductView.vue'
-import AboutView from './views/AboutView.vue'
-import ContactView from './views/ContactView.vue'
-import AuthView from './views/AuthView.vue'
-import AccountView from './views/AccountView.vue'
-import PrivacyView from './views/PrivacyView.vue'
-import BonusView from './views/BonusView.vue'
+// Остальные страницы — лениво: их код и стили выносятся из начального бандла и подгружаются при переходе.
+// Один и тот же () => import используется для нескольких маршрутов (CatalogView, AuthView) — тогда это один общий чанк.
+const CatalogView = () => import('./views/CatalogView.vue')
+const ProductView = () => import('./views/ProductView.vue')
+const AboutView = () => import('./views/AboutView.vue')
+const ContactView = () => import('./views/ContactView.vue')
+const AuthView = () => import('./views/AuthView.vue')
+const AccountView = () => import('./views/AccountView.vue')
+const PrivacyView = () => import('./views/PrivacyView.vue')
+const BonusView = () => import('./views/BonusView.vue')
 
 const router = createRouter({
   history: createWebHistory(),

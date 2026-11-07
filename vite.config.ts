@@ -22,6 +22,10 @@ export default defineConfig(({ mode }) => {
           entryFileNames: 'assets/[name]-[hash:10].js',
           chunkFileNames: 'assets/[name]-[hash:10].js',
           assetFileNames: 'assets/[name]-[hash:10][extname]',
+          // Движок (vue, vue-router, pinia) — в отдельный чанк vendor: он почти не меняется, поэтому
+          // кэш браузера переживает выкладки с правками кода приложения. Leaflet не трогаем — он грузится
+          // лениво (import() в карте), и попадать в общий vendor ему нельзя, иначе загрузится на первой странице.
+          manualChunks: (id) => (id.includes('node_modules') && !id.includes('leaflet') ? 'vendor' : undefined),
         },
       },
     },
