@@ -16,7 +16,8 @@ import BonusTeaser from '../components/molecules/BonusTeaser.vue'
 import ReviewsSection from '../components/organisms/ReviewsSection.vue'
 
 const ui = useUI(), catalog = useCatalog()
-const offers = computed(() => catalog.shopProducts.filter((p) => p.discount).slice(0, 5))
+// «Հատուկ առաջարկներ»: сначала комбо, потом товары со скидкой
+const offers = computed(() => catalog.shopProducts.filter((p) => p.combo || p.discount).sort((a, b) => Number(!a.combo) - Number(!b.combo)).slice(0, 8))
 </script>
 
 <template>

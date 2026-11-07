@@ -15,6 +15,8 @@ export interface ProductDraft {
   /** Вид мяса у хороваца (фильтр в каталоге); null — «прочее». */
   kind: ProductKind | null
   art: string; image?: string; inStock: boolean; active: boolean
+  /** Комбо: в «Հատուկ առաջարկներ», доставка заказа с ним бесплатна. */
+  combo: boolean
 }
 /** Изменение товара: любые поля каталога и баллы; image: '' — убрать фото. */
 export type ProductPatch = Partial<ProductDraft> & { bonusPoints?: number | null }

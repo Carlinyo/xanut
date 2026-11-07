@@ -28,6 +28,8 @@ export interface Product {
   bonusPoints?: number
   /** Товар только за баллы (заведён в админке): в каталоге не показывается, за деньги не продаётся. */
   bonusOnly?: boolean
+  /** Комбо: набор по одной цене (в «Հատուկ առաջարկներ»); доставка заказа с ним бесплатна — входит в цену. */
+  combo?: boolean
 }
 
 export interface KebabMeat { id: string; name: string; perKg: number }
@@ -90,12 +92,13 @@ export interface BonusEntry { orderId: number; createdAt: string; earned: number
 /** Засчитан ли заказ месяца: vip — в VIP (и в постоянного), regular — в постоянного; small — сумма меньше порога,
  *  pending — ещё не получен, cancelled — отменён. */
 export type OrderMark = 'vip' | 'regular' | 'small' | 'pending' | 'cancelled'
-/** Группа покупателя на этот месяц: manual — назначена магазином (без срока); next — сколько заказов (от min ֏) осталось
- *  до следующей группы (null — выше некуда или назначена); month — до какого дня действует группа, сколько дней осталось
+/** Группа покупателя сейчас: заработанная в месяце действует до конца следующего. manual — назначена магазином (без срока);
+ *  next — цель месяца: сколько заказов (от min ֏) осталось до группы segment, keep — чтобы сохранить нынешнюю группу и на
+ *  следующий месяц (null — выше некуда или назначена); month — до какого дня действует группа, сколько дней осталось
  *  и сколько заказов месяца засчитано; marks — заказы месяца; notice — «вы стали …», пока покупатель не закрыл сообщение. */
 export interface CustomerLevel {
   segment: Segment; manual: boolean; perks: Perks; orders: number; spent: number
-  next: { segment: Segment; ordersLeft: number; min: number } | null
+  next: { segment: Segment; ordersLeft: number; min: number; keep?: boolean } | null
   month: { until: string; daysLeft: number; regular: number; vip: number }
   marks: { id: number; mark: OrderMark }[]
   notice: { segment: Segment } | null
@@ -154,6 +157,8 @@ export interface AdminProduct {
   id: number; name: string; categoryId: number; price: number; oldPrice: number | null; unit: ProductUnit; description: string | null
   kind: ProductKind | null
   art: string; image: string | null; active: boolean; inStock: boolean; bonusPoints: number | null; bonusOnly: boolean
+  /** Комбо: в «Հատուկ առաջարկներ», доставка заказа с ним бесплатна (у старого сервера поля нет). */
+  combo?: boolean
   rating: number; reviews: number
 }
 /** Клиент в админке: данные аккаунта, покупки, баллы и группа (назначенная вручную или по покупкам). */
@@ -161,6 +166,8 @@ export interface AdminUser {
   id: string; name: string; email: string; phone: string; address: string | null; role: string; createdAt: string
   emailVerified: boolean
   segment: Segment; segmentManual: boolean; autoSegment: Segment
+  /** До какого дня действует группа по заказам (null — «новый»; у старого сервера поля нет). */
+  autoUntil?: string | null
   /** Засчитано заказов в этом месяце: в постоянного и в VIP. */
   month?: { regular: number; vip: number }
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null

@@ -159,6 +159,7 @@ async function toggle(p: AdminProduct, field: 'inStock' | 'active', value: boole
             <span class="row__tags">
               <span v-if="!p.active" class="tag is-hidden">{{ $t('admin.catalog.tagHidden') }}</span>
               <span v-if="!p.inStock" class="tag is-out">{{ $t('stock.out') }}</span>
+              <span v-if="p.combo" class="tag is-combo">🎁 {{ $t('combo.tag') }}</span>
               <span v-if="p.kind" class="tag is-kind">{{ KIND_ICON[p.kind] }} {{ $t('catalog.kinds.' + p.kind) }}</span>
               <span v-if="p.reviews" class="tag is-rating">★ {{ p.rating.toFixed(1) }} ({{ p.reviews }})</span>
               <span v-if="p.bonusPoints" class="tag is-bonus">🎁 {{ p.bonusPoints.toLocaleString('en-US') }}</span>
@@ -214,6 +215,7 @@ async function toggle(p: AdminProduct, field: 'inStock' | 'active', value: boole
 .tag.is-out { background:var(--dark); color:#fff; }
 .tag.is-rating { background:var(--cream); color:#8a5f00; }
 .tag.is-bonus { background:var(--cream); color:#7a5600; }
+.tag.is-combo { background:var(--yellow); color:#1b1500; }
 .row__toggles { display:flex; flex-direction:column; gap:6px; min-width:110px; }
 .row__toggles[aria-busy] { opacity:.6; pointer-events:none; }
 @media (max-width:760px) {

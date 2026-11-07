@@ -44,6 +44,7 @@ onUnmounted(() => clearTimeout(timer))
     </RouterLink>
     <h3 class="card__title"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <PriceTag :price="product.price" :old="product.old" :unit="product.unit" />
+    <span v-if="product.combo" class="card__combo">🎁 {{ $t('combo.tag') }} · {{ $t('combo.free') }}</span>
     <RouterLink v-if="product.bonusPoints" to="/bonus" class="card__bonus">{{ $t('bonus.orPoints', { n: product.bonusPoints.toLocaleString('en-US') }) }}</RouterLink>
     <StarRating v-if="product.reviews" :value="product.rating" :count="product.reviews" />
     <template v-if="product.orderable">
@@ -71,6 +72,7 @@ onUnmounted(() => clearTimeout(timer))
 .card .btn { margin-top:auto; }
 .card__bonus { align-self:flex-start; margin-top:-4px; padding:2px 8px; border-radius:var(--pill); background:var(--cream); color:#8a5f00; font-size:11.5px; font-weight:700; }
 .card__bonus:hover { background:#ffeec0; }
+.card__combo { align-self:flex-start; margin-top:-4px; padding:2px 8px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:11.5px; font-weight:800; }
 .card__display { margin:auto 0 0; padding:9px 8px; border:1.5px dashed var(--line); border-radius:var(--r-md); color:var(--muted); font-size:12px; font-weight:600; text-align:center; }
 .card--display .card__imgbox { filter:saturate(.85); }
 .card--out .card__imgbox { filter:grayscale(.6); opacity:.7; }

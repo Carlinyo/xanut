@@ -19,7 +19,9 @@ const info = ref('')
 const busy = ref(false)
 const expired = ref(false)
 const finished = ref(false) // код уже принят: повторные срабатывания игнорируем
-const devCode = ref(props.challenge.devCode ?? '') // тестовый режим: письмо не отправлялось
+// Код показываем на экране только в dev-сборке (import.meta.env.DEV). Даже если сервер по ошибке пришлёт devCode
+// в проде (почта отвалилась, перепутан флаг окружения), код не попадёт в интерфейс. В проде Vite вырежет эту ветку.
+const devCode = ref(import.meta.env.DEV ? (props.challenge.devCode ?? '') : '')
 
 // таймер «отправить ещё раз»
 const wait = ref(props.challenge.resendIn)
@@ -62,7 +64,7 @@ async function resend() {
   resending.value = true
   try {
     const r = await auth.resend(props.challenge.challengeId)
-    devCode.value = r.devCode ?? ''
+    devCode.value = import.meta.env.DEV ? (r.devCode ?? '') : ''
     code.value = ''
     info.value = t('otp.resent')
     startTimer(r.resendIn)

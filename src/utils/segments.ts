@@ -29,11 +29,12 @@ export function perksText(p: Perks): string {
 export const discountLabel = (segment?: string | null): string =>
   isSegment(segment) ? t('cart.discountFor', { group: t('segments.short.' + segment) }) : t('cart.discount')
 
-/** Сколько осталось до следующей группы: «Այս ամիս ևս 2 պատվեր՝ …». Пусто — выше некуда или группа назначена магазином. */
+/** Цель месяца: «Այս ամիս ևս 2 պատվեր՝ …» — до следующей группы или (keep) чтобы сохранить нынешнюю и на следующий месяц.
+ *  Пусто — выше некуда или группа назначена магазином. */
 export function nextLevelText(level: CustomerLevel): string {
   const next = level.next
   if (!next || next.ordersLeft <= 0) return ''
-  return t('segments.next', { n: next.ordersLeft, min: money(next.min), name: t('segments.names.' + next.segment) })
+  return t(next.keep ? 'segments.keep' : 'segments.next', { n: next.ordersLeft, min: money(next.min), name: t('segments.names.' + next.segment) })
 }
 
 /** Как попасть в группу: «Ամսական 10 պատվեր՝ յուրաքանչյուրը 3,000 ֏-ից». */
@@ -44,7 +45,7 @@ export function ruleText(s: Segment, r?: SegmentRules): string {
     : t('segments.rule.monthly', { n: r.vipOrders, min: money(r.vipMin) })
 }
 
-/** Последний день группы: until — начало следующего месяца по времени Армении (UTC+4) → «նոյեմբերի 30-ը». */
+/** Последний день группы: until — полночь после него по времени Армении (UTC+4) → «դեկտեմբերի 31-ը». */
 export function lastDayText(until: string): string {
   const last = new Date(Date.parse(until) - 1 + 4 * 3_600_000)
   const months = t('segments.months') as string[]

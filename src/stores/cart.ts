@@ -78,16 +78,25 @@ export const useCart = defineStore('cart', {
     },
     /** Акция группы покупателя (новый, постоянный, VIP): скидка, баллы, бесплатная доставка. */
     perks: (): Perks => useBonus().perks,
+    /** В корзине есть комбо: доставка входит в его цену — заказ доставят бесплатно, и дальний тоже (так же решит сервер).
+     *  У порции из окна шашлыка товар — её мясо (kebab.meat — номер товара). */
+    hasCombo(): boolean {
+      const byId = new Map(useCatalog().products.map((p) => [p.id, p]))
+      return this.items.some((i) => {
+        const id = i.kind === 'kebab' ? Number(i.kebab?.meat) : i.productId
+        return id !== undefined && byId.get(id)?.combo === true
+      })
+    },
     /** Адрес дальше deliveryFar.overKm от магазина — дальняя доставка (как решит сервер). */
     far(): boolean {
       const far = useCatalog().config.deliveryFar
       return !!far && this.deliveryKm !== null && this.deliveryKm > far.overKm
     },
     /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки;
-     *  дальняя доставка стоит deliveryFar.fee при любой сумме (бесплатная доставка по акции группы — и на неё). */
+     *  дальняя доставка стоит deliveryFar.fee при любой сумме (бесплатная доставка по акции группы и с комбо — и на неё). */
     priced(): ReturnType<typeof applyPerks> {
       const { deliveryFee, freeDeliveryFrom, deliveryFar } = useCatalog().config
-      const base = this.subtotal === 0 ? 0 : this.far && deliveryFar ? deliveryFar.fee : this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
+      const base = this.subtotal === 0 || this.hasCombo ? 0 : this.far && deliveryFar ? deliveryFar.fee : this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
       return applyPerks(this.subtotal, base, this.perks)
     },
     /** Скидка по акции группы (֏). */

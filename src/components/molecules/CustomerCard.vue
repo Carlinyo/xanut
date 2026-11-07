@@ -5,7 +5,7 @@ import { computed, ref } from 'vue'
 import { t } from '../../i18n'
 import { money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
-import { SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
+import { lastDayText, SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
 import type { AdminUser, Segment } from '../../types'
 import AppInput from '../atoms/AppInput.vue'
 import CustomerOrders from './CustomerOrders.vue'
@@ -52,6 +52,10 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <div v-if="u.month">
           <dt>{{ $t('admin.customers.month') }}</dt>
           <dd>{{ u.month.regular }}<small v-if="u.month.vip"> · VIP՝ {{ u.month.vip }}</small></dd>
+        </div>
+        <div v-if="!u.segmentManual && u.autoUntil">
+          <dt>{{ $t('admin.customers.until') }}</dt>
+          <dd>{{ lastDayText(u.autoUntil) }}</dd>
         </div>
         <div><dt>{{ $t('admin.customers.spent') }}</dt><dd>{{ money(u.spent) }}</dd></div>
         <div><dt>{{ $t('admin.customers.last') }}</dt><dd>{{ u.lastOrderAt ? day(u.lastOrderAt) : '—' }}</dd></div>

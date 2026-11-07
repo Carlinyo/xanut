@@ -83,7 +83,8 @@ const methodOptions = computed(() => [
           {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b> · {{ perksText(level.perks) }}
         </p>
         <p v-if="cart.delivery && !cart.far" class="muted">{{ $t('cart.freeFrom', { amount: catalog.config.freeDeliveryFrom.toLocaleString('en-US') }) }}</p>
-        <p v-if="cart.method === 'delivery' && far" class="muted">
+        <p v-if="cart.method === 'delivery' && cart.hasCombo" class="drawer__earn">🎁 {{ $t('combo.cart') }}</p>
+        <p v-else-if="cart.method === 'delivery' && far" class="muted">
           {{ $t(cart.far ? 'cart.farApplied' : 'cart.farNote', { km: far.overKm, fee: money(far.fee) }) }}
         </p>
         <p v-if="cart.pointsEarned" class="drawer__earn">{{ $t(auth.isAuth ? 'bonus.earnHint' : 'bonus.guestEarn', { n: cart.pointsEarned.toLocaleString('en-US') }) }}</p>

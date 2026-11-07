@@ -25,7 +25,8 @@ const title = computed(() =>
 // товары раздела с учётом поиска — до выбора вида мяса
 const found = computed(() => {
   const q = ui.query.trim().toLowerCase() // «стейк » с пробелом в конце тоже должен находиться
-  return catalog.shopProducts.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || p.discount) && p.name.toLowerCase().includes(q))
+  // «Հատուկ առաջարկներ» — комбо и товары со скидкой
+  return catalog.shopProducts.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || p.discount || p.combo) && p.name.toLowerCase().includes(q))
 })
 // хоровац: кнопки «Խոզ / Տավար / Հավ…» (вид — в адресе: ?cat=6&kind=pork) и показ по видам
 const isKebab = computed(() => !props.offersOnly && category.value?.kebab === true)
@@ -38,9 +39,10 @@ const list = computed(() => {
   if (sort.value === 'asc') return l.sort((a, b) => a.price - b.price)
   if (sort.value === 'desc') return l.sort((a, b) => b.price - a.price)
   if (sort.value === 'disc') return l.sort((a, b) => b.discount - a.discount)
-  // то, чего нет в наличии, — в конце; хоровац — по видам: свинина, говядина, баранина, курица, индейка, рыба…
+  // то, чего нет в наличии, — в конце; в «Հատուկ առաջարկներ» сначала комбо; хоровац — по видам: свинина, говядина, баранина, курица, индейка, рыба…
   const out = (p: (typeof l)[number]) => Number(p.inStock === false)
-  return l.sort((a, b) => out(a) - out(b) || (isKebab.value ? kindRank(a) - kindRank(b) : 0))
+  const notCombo = (p: (typeof l)[number]) => Number(!(props.offersOnly && p.combo))
+  return l.sort((a, b) => out(a) - out(b) || notCombo(a) - notCombo(b) || (isKebab.value ? kindRank(a) - kindRank(b) : 0))
 })
 // ключ заставляет сетку анимированно «перестроиться» при смене фильтра
 const gridKey = computed(() => [base.value, cat.value, kind.value, sort.value, ui.query.trim(), list.value.length].join('|'))

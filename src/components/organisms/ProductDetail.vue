@@ -47,6 +47,7 @@ onUnmounted(() => clearTimeout(timer))
         <PriceTag :price="product.price" :old="product.old" :unit="product.unit" size="lg" />
         <small class="pdp__unit">{{ $t(byWeight ? 'product.perKg' : 'product.perPc') }}</small>
         <p class="pdp__desc" :class="{ muted: !product.description }">{{ product.description || $t('product.info') }}</p>
+        <p v-if="product.combo" class="pdp__combo">🎁 {{ $t('combo.long') }}</p>
       </template>
       <p v-else-if="product.price" class="muted">{{ $t('bonus.value', { price: money(product.price) }) }}</p>
       <template v-if="product.orderable">
@@ -85,6 +86,7 @@ onUnmounted(() => clearTimeout(timer))
 h1 { margin:0; }
 .pdp__unit { margin-top:-8px; color:var(--muted); font-size:13px; }
 .pdp__desc { margin:0; line-height:1.6; white-space:pre-line; }
+.pdp__combo { margin:0; padding:10px 14px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:14px; font-weight:600; line-height:1.5; }
 @media (max-width:800px) { .pdp { grid-template-columns:1fr; } .pdp__img { margin-inline:auto; } .pdp__info .btn { width:100%; } }
 .pdp__bonus { display:flex; flex-direction:column; align-items:flex-start; gap:10px; width:100%; padding:14px 16px; border:1.5px solid rgb(217 151 0 / .45); border-radius:var(--r-md); background:var(--cream); }
 .pdp__bonus p { margin:0; color:#7a5600; font-weight:600; }

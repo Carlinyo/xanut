@@ -24,7 +24,7 @@ const notFound = ref(false)
 const busy = ref(false)
 const expired = ref(false) // код истёк или исчерпаны попытки — только «начать заново»
 const info = ref('')
-const devCode = ref('') // тестовый режим: письмо не отправлялось, код показываем на экране
+const devCode = ref('') // код на экране — только в dev-сборке (import.meta.env.DEV); в проде присваивания ниже обнуляются
 const pwContext = computed(() => ({ email: form.email }))
 const passwordBox = ref<HTMLElement | null>(null)
 const card = ref<HTMLElement | null>(null)
@@ -65,7 +65,7 @@ async function sendCode() {
   try {
     const c = await auth.resetStart(form.email.trim())
     challenge.value = c
-    devCode.value = c.devCode ?? ''
+    devCode.value = import.meta.env.DEV ? (c.devCode ?? '') : ''
     Object.assign(form, { code: '', password: '', confirm: '' })
     expired.value = false
     info.value = ''
@@ -116,7 +116,7 @@ async function resend() {
   resending.value = true
   try {
     const r = await auth.resend(challenge.value.challengeId)
-    devCode.value = r.devCode ?? ''
+    devCode.value = import.meta.env.DEV ? (r.devCode ?? '') : ''
     form.code = ''
     info.value = t('otp.resent')
     startTimer(r.resendIn)

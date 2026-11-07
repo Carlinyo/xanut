@@ -117,6 +117,9 @@ function add() {
           </optgroup>
         </FormField>
 
+        <!-- комбо: что в него входит (доставка — бесплатно) -->
+        <p v-if="item?.product?.combo" class="kb__combo">🎁 {{ item.product.description || $t('combo.long') }}</p>
+
         <template v-if="perPiece">
           <FormField
             v-model="form.qty" type="number" inputmode="numeric" min="1" :max="MAX_QTY" step="1"
@@ -169,6 +172,7 @@ h2 { margin:0; font-size:22px; }
 legend { margin-bottom:8px; padding:0; font-size:14px; font-weight:600; }
 .kb__note { display:block; margin-top:2px; color:var(--muted); font-size:12px; line-height:1.4; }
 .kb__hint { margin:-6px 0 0; color:var(--muted); font-size:13px; line-height:1.5; }
+.kb__combo { margin:-4px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; line-height:1.45; }
 .kb__empty { margin:0; padding:14px 16px; border-radius:var(--r-md); background:var(--bg); color:var(--muted); line-height:1.5; }
 .num-enter-active, .num-leave-active { transition:opacity .15s, transform .2s var(--ease); }
 .num-enter-from { opacity:0; transform:translateY(6px); }

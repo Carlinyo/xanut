@@ -32,6 +32,7 @@ const form = reactive({
   image: p?.image ?? '',
   inStock: p?.inStock ?? true,
   active: p?.active ?? true,
+  combo: p?.combo ?? false,
 })
 const int = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN)
 const errors = reactive({ name: '', categoryId: '', price: '', oldPrice: '', form: '' })
@@ -64,6 +65,7 @@ function validate(): boolean {
 const draft = (): ProductDraft => ({
   name: form.name.trim(), categoryId: form.categoryId, price: int(form.price), oldPrice: form.oldPrice.trim() ? int(form.oldPrice) : null,
   unit: form.unit, description: form.description.trim(), kind: form.kind || null, art: form.art, image: form.image, inStock: form.inStock, active: form.active,
+  combo: form.combo,
 })
 
 async function save() {
@@ -152,6 +154,7 @@ async function remove() {
     <div class="pf__toggles">
       <AppToggle v-model="form.inStock"><b>{{ $t('admin.catalog.form.inStock') }}</b> — {{ $t('admin.catalog.form.inStockHint') }}</AppToggle>
       <AppToggle v-model="form.active"><b>{{ $t('admin.catalog.form.visible') }}</b> — {{ $t('admin.catalog.form.visibleHint') }}</AppToggle>
+      <AppToggle v-model="form.combo"><b>🎁 {{ $t('admin.catalog.form.combo') }}</b> — {{ $t('admin.catalog.form.comboHint') }}</AppToggle>
     </div>
 
     <p v-if="errors.form" class="pf__err" role="alert">{{ errors.form }}</p>
