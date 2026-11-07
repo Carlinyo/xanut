@@ -32,8 +32,8 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 // неоплаченный онлайн-заказ: ждём, пока магазин его примет (тогда появится «Վճարել առցանց»), и итог оплаты —
-// заказы обновляются сами раз в 20 с, пока страница открыта и видна
-const POLL_MS = 20_000
+// заказы обновляются сами раз в 30 с, пока страница открыта и видна
+const POLL_MS = 30_000
 let poll: ReturnType<typeof setInterval> | undefined
 const waiting = computed(() => orders.value.some(awaitingPay))
 async function refresh() {

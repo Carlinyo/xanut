@@ -63,10 +63,13 @@ async function load() {
   } finally { loading.value = false }
 }
 // новые заказы: короткий запрос номера последнего заказа, список — только если он изменился;
-// есть заказы, ждущие оплату, — весь список (сервер заодно спрашивает банк об их оплате)
+// есть заказы, ждущие оплату, — ещё и весь список раз в PAY_POLL_MS (сервер заодно спрашивает банк об их оплате).
+// Весь список — десятки чтений базы, номер — одно: на бесплатном тарифе Firestore это важно.
+const PAY_POLL_MS = 30_000
+let lastFull = 0
 async function poll() {
   if (loading.value) return
-  if (orders.value.some(awaitingPay)) return load()
+  if (orders.value.some(awaitingPay) && Date.now() - lastFull >= PAY_POLL_MS) { lastFull = Date.now(); return load() }
   try {
     const { lastId: id } = await api<{ lastId: number }>('/staff/orders/head')
     offline.value = false
