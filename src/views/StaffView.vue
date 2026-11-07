@@ -20,7 +20,8 @@ import type { AdminOrder } from '../types'
 import AdminOrderCard from '../components/molecules/AdminOrderCard.vue'
 import AppButton from '../components/atoms/AppButton.vue'
 
-const POLL_MS = 8_000, HIDDEN_POLL_MS = 20_000
+// раз в 15 с (в фоновой вкладке — раз в минуту): каждый опрос — 3 чтения базы (сессия, пользователь, номер заказа)
+const POLL_MS = 15_000, HIDDEN_POLL_MS = 60_000
 const confirm = useConfirm(), authError = useAuthRedirect()
 // шапки сайта здесь нет — выход прямо на странице; после него — снова ко входу в этот раздел
 const logout = useLogout({ path: '/login', query: { redirect: '/staff' } })

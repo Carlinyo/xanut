@@ -17,7 +17,8 @@ import AppInput from '../atoms/AppInput.vue'
 /** unpaid — не оплаченные (любого статуса, кроме отменённых): заказ может быть уже готов, а деньги ещё не получены. */
 type Filter = 'active' | 'unpaid' | 'done' | 'cancelled' | 'all'
 /** Как часто спрашивать о новых заказах: открытая вкладка — каждые 5 с, фоновая — каждые 15 с (один короткий запрос). */
-const POLL_MS = 5_000, HIDDEN_POLL_MS = 15_000
+// раз в 15 с (в фоновой вкладке — раз в минуту): каждый опрос — 3 чтения базы (сессия, пользователь, номер заказа)
+const POLL_MS = 15_000, HIDDEN_POLL_MS = 60_000
 const SOUND_KEY = 'admin-sound'
 
 const admin = useAdmin(), authError = useAuthRedirect(), confirm = useConfirm()
