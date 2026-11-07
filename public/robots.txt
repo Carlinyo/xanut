@@ -4,4 +4,4 @@ Disallow: /admin
 Disallow: /account
 Disallow: /api/
 
-Sitemap: https://misumterq.com/sitemap.xml
+Sitemap: https://www.misumterq.com/sitemap.xml

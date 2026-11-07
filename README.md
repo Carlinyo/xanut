@@ -1,4 +1,4 @@
-# Միս ու մթերք — сайт (Vue 3 + TypeScript + Vite) · https://misumterq.com
+# Միս ու մթերք — сайт (Vue 3 + TypeScript + Vite) · https://www.misumterq.com
 
 Магазин мяса и шашлыка в Джермуке: каталог, заказ шашлыка и мяса с доставкой, регистрация с кодом подтверждения.
 
@@ -113,7 +113,10 @@ CSP (`script-src`, `connect-src`, `frame-src`, `img-src`), иначе брауз
 `index.html` — описание и картинка для превью ссылок в Facebook, Telegram, Viber (`public/og.jpg`) и данные магазина для
 Google (адрес, телефон, часы — блок `application/ld+json`). `public/manifest.webmanifest` и `public/icons/` — иконка при
 добавлении сайта на главный экран телефона. `public/robots.txt` и `public/sitemap.xml` — для поисковиков.
-Адрес сайта — `https://misumterq.com` (прописан в этих трёх файлах и в `index.html`; при смене домена замените его там же).
+Иконка во вкладке и в выдаче Google — `public/favicon.ico` (16, 32 и 48 px, сделана из `public/icons/icon-192.png`) и `public/favicon.svg`.
+Без настоящего `favicon.ico` по этому адресу отдавалась страница сайта, и Google показывал вместо иконки глобус.
+Адрес сайта — `https://www.misumterq.com`: так он открывается на Vercel (адрес без `www` перенаправляет сюда), так его знает Google.
+Прописан в `index.html`, `robots.txt` и `sitemap.xml` — при смене домена замените его там же.
 Неизвестный адрес показывает страницу «Էջը չի գտնվել».
 
 ## Тестовый режим
