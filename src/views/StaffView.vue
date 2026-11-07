@@ -2,11 +2,13 @@
 // Раздел работников: только заказы. Заказы в работе — ближайшие по времени первыми, кнопка «Готово» (покупателю уходит
 // письмо «заказ готов»); ниже — готовые за последние часы. Новые заказы появляются сами (раз в несколько секунд
 // спрашиваем номер последнего заказа) и звучит звонок. Отменить заказ, подтвердить оплату — только в админке.
+// Страница открывается без сайта вокруг (meta.bare в router.ts): ни шапки, ни подвала, каталог не грузится.
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, ApiError, commonErrorKey } from '../api'
 import { t } from '../i18n'
 import { useConfirm } from '../stores/confirm'
 import { useAuthRedirect } from '../composables/useAuthRedirect'
+import { useLogout } from '../composables/useLogout'
 import { createTicker } from '../utils/ticker'
 import { formatPhone } from '../utils/phone'
 import { formatSlot, money } from '../utils/format'
@@ -17,6 +19,8 @@ import AppButton from '../components/atoms/AppButton.vue'
 
 const POLL_MS = 8_000, HIDDEN_POLL_MS = 20_000
 const confirm = useConfirm(), authError = useAuthRedirect()
+// шапки сайта здесь нет — выход прямо на странице; после него — снова ко входу в этот раздел
+const logout = useLogout({ path: '/login', query: { redirect: '/staff' } })
 const orders = ref<AdminOrder[]>([])
 const lastId = ref(0)
 const loaded = ref(false)
@@ -38,7 +42,8 @@ async function load() {
     const known = new Set(orders.value.map((o) => o.id))
     const r = await api<{ orders: AdminOrder[]; lastId: number }>('/staff/orders')
     const added = loaded.value ? r.orders.filter((o) => !known.has(o.id) && isActive(o)).map((o) => o.id) : []
-    orders.value = r.orders
+    // «Готово», нажатое только что, ещё в пути к серверу — заказ остаётся в готовых, а не прыгает обратно
+    orders.value = r.orders.map((o) => (busy.value.has(o.id) && isActive(o) ? { ...o, status: 'done' } : o))
     lastId.value = r.lastId
     loaded.value = true
     offline.value = false
@@ -75,7 +80,8 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGesture, { capture: true })
 })
 
-/** «Готово»: после подтверждения — заказ уходит в готовые, покупателю — письмо. */
+/** «Готово»: после подтверждения заказ сразу уходит в готовые — не ждём сервер, который сначала отправляет покупателю
+ *  письмо (до ~15 с), работник уже занят следующим заказом. Не получилось — заказ возвращается в работу с причиной. */
 async function ready(o: AdminOrder) {
   const ok = await confirm.ask({
     icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), yes: t('admin.confirm.ready.yes'), text: t('staff.readyText'),
@@ -89,10 +95,13 @@ async function ready(o: AdminOrder) {
   busy.value.add(o.id)
   fresh.value.delete(o.id)
   delete results.value[o.id]
+  const setStatus = (status: string) => { orders.value = orders.value.map((x) => (x.id === o.id ? { ...x, status } : x)) }
+  setStatus('done')
   try {
     const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/done`, { method: 'POST', timeout: 40_000 }) // письмо может идти до ~15 с
     orders.value = orders.value.map((x) => (x.id === o.id ? r.order : x))
   } catch (e) {
+    setStatus(o.status)
     if (authError(e)) return
     const code = e instanceof ApiError ? e.code : ''
     results.value[o.id] = { error: code === 'ORDER_CANCELLED' ? t('admin.errors.cancelled') : code === 'NOT_FOUND' ? t('admin.errors.notFound') : t(commonErrorKey(e)) }
@@ -110,6 +119,7 @@ async function ready(o: AdminOrder) {
       <div class="staff__bar">
         <small v-if="offline" class="staff__offline" role="status">⚠ {{ $t('admin.offline') }}</small>
         <AppButton size="sm" variant="light" :disabled="loading" @click="load">🔄 {{ $t('admin.refresh') }}</AppButton>
+        <AppButton size="sm" variant="light" @click="logout">🚪 {{ $t('account.logout') }}</AppButton>
       </div>
     </div>
     <p class="muted staff__intro">{{ $t('staff.intro') }}</p>

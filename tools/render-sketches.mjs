@@ -3,16 +3,13 @@
 // цвет ложится штрихами с зерном бумаги, контур — графитом, чуть дрожащей линией. Фон прозрачный.
 // Запуск (нужен sharp): node tools/render-sketches.mjs   → public/img/cat/<вид>.webp
 // Только некоторые: node tools/render-sketches.mjs fish rabbit
-// Те же сцены «кистью» (баннеры под «Հատուկ առաջարկներ» на главной): node tools/render-sketches.mjs --brush → public/img/brush/<вид>.webp
 import { createRequire } from 'node:module'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const sharp = require('sharp')
 
-const ARGS = process.argv.slice(2)
-const BRUSH = ARGS.includes('--brush')
-const OUT = fileURLToPath(new URL(BRUSH ? '../public/img/brush/' : '../public/img/cat/', import.meta.url))
+const OUT = fileURLToPath(new URL('../public/img/cat/', import.meta.url))
 mkdirSync(OUT, { recursive: true })
 
 const W = 800 // рабочий размер (сцены рисуются в 400×400 и растрируются вдвое крупнее)
@@ -50,22 +47,22 @@ function scatter(seed, n, [x0, y0, x1, y1], inside, r0, r1) {
 const inEllipse = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1
 
 /** Инструменты рисования одного слоя: 'color' — цвет, 'line' — контур (белые заливки закрывают линии позади). */
-function kit(pass, K = 1) { // K — во сколько раз толще контуры (кисти нужны толще карандаша)
+function kit(pass) {
   const C = pass === 'color'
   const join = 'stroke-linejoin="round" stroke-linecap="round"'
   return {
     /** фигура с заливкой и контуром толщины lw */
     f: (d, fill, lw = 5, a = '') => C ? `<path d="${d}" fill="${fill}" ${a}/>`
-      : `<path d="${d}" fill="#fff" stroke="${lw ? '#000' : 'none'}" stroke-width="${lw * K}" ${join} ${a}/>`,
+      : `<path d="${d}" fill="#fff" stroke="${lw ? '#000' : 'none'}" stroke-width="${lw}" ${join} ${a}/>`,
     /** только цвет: тень, блик, румянец */
     p: (d, fill, a = '') => (C ? `<path d="${d}" fill="${fill}" ${a}/>` : ''),
     /** цветной штрих */
     s: (d, color, w, a = '') => (C ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" ${join} ${a}/>` : ''),
     /** графитовая линия */
-    l: (d, w = 3, a = '') => (C ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w * K}" ${join} ${a}/>`),
+    l: (d, w = 3, a = '') => (C ? '' : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w}" ${join} ${a}/>`),
     /** толстая линия с контуром: сосиска, огурец, шампур */
     tube: (d, w, color, lw = 5, a = '') => C ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round" ${a}/>`
-      : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w + 2 * lw * K}" stroke-linecap="round" ${a}/><path d="${d}" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" ${a}/>`,
+      : `<path d="${d}" fill="none" stroke="#000" stroke-width="${w + 2 * lw}" stroke-linecap="round" ${a}/><path d="${d}" fill="none" stroke="#fff" stroke-width="${w}" stroke-linecap="round" ${a}/>`,
     g: (t, ...xs) => `<g transform="${t}">${xs.join('')}</g>`,
   }
 }
@@ -89,10 +86,6 @@ const DEFS = [
   lin('spSauce', '#d8452f', '#9e271d', ACROSS), lin('spMound', '#e0863b', '#b45a22'), lin('spBowl', '#c99560', '#8f5f34'), lin('spChili', '#e5472f', '#a8261c'),
   lin('drWater', '#e2f2fa', '#a9d3ea', ACROSS), lin('drJuice', '#f9b04a', '#e8802a'),
   lin('gBox', '#6a6e75', '#3c3f45'), lin('gFlame', '#ffe07a', '#f06a2a'),
-  lin('pigSkin', '#fbd0cd', '#e8939a', DIAG), lin('pigHead', '#fcd6d3', '#ec9ea4', DIAG), lin('pigSnout', '#f6aab0', '#de7d88'),
-  lin('cowHide', '#fbf8f2', '#ddd5c8', DIAG), lin('cowNose', '#f7c6c6', '#e39a9e'),
-  lin('shWool', '#fffdf7', '#e6dccb', DIAG), lin('shFace', '#7a6a61', '#4a3f39', DIAG),
-  lin('henBody', '#f1b46c', '#b9682e', DIAG), lin('henHead', '#f4c07c', '#c97a3a', DIAG), lin('henWing', '#d98a46', '#9c5022', DIAG), lin('henComb', '#ef4b3a', '#b9271c'),
   lin('wBottle', '#5e2f3a', '#2a1218', ACROSS), lin('wWine', '#b3243a', '#6e1022'),
   lin('cBottle', '#e8a345', '#8f4a14', ACROSS), lin('cAmber', '#f0a83f', '#b0601a'),
 ].join('')
@@ -129,92 +122,53 @@ const scenes = {
       meat(142))
   },
 
-  // Խոզի միս — свинка (раньше — отбивная): на плитке категории — животное, из которого мясо
+  // Խոզի միս — свиная отбивная с жировой каймой, розмарин, перец
   ribs(k) {
-    const leg = (x, y, h = 56) => k.f(R(x, y, 26, h, 11), 'url(#pigSkin)', 4.5) + k.p(R(x, y + h - 13, 26, 13, 6), '#c96f7a') + k.l(`M${x + 2} ${y + h - 13}H${x + 24}`, 2.5)
-    const tail = 'M326 200C346 190 358 208 346 218C336 226 324 214 336 206'
-    return shadow(k, 214, 334, 140) +
-      leg(152, 258) + leg(272, 258) + leg(180, 266) + leg(300, 264) +
-      k.s(tail, '#e48f96', 6) + k.l(tail, 3) +
-      k.f(E(228, 220, 112, 74), 'url(#pigSkin)', 5.5) +
-      k.p(E(222, 262, 74, 22), '#fde4e2', 'opacity=".75"') +
-      k.p(E(270, 176, 40, 14), '#fff', 'opacity=".3" transform="rotate(-12 270 176)"') +
-      k.f('M92 160L84 112C110 114 130 130 136 152Z', '#e48f96', 4.5) +
-      k.f(E(120, 206, 60, 56), 'url(#pigHead)', 5.5) +
-      k.f('M134 158L152 110C174 124 180 150 170 172Z', 'url(#pigSkin)', 4.5) +
-      k.p('M142 154L154 124C166 136 168 152 162 164Z', '#f3a2a9') +
-      k.f(E(70, 224, 25, 21), 'url(#pigSnout)', 4.5) +
-      k.f(E(61, 222, 4.5, 6.5), '#8a3c46', 0) + k.f(E(78, 222, 4.5, 6.5), '#8a3c46', 0) +
-      k.f(E(110, 190, 7.5, 8.5), '#2b2320', 2) + k.p(E(108, 187, 2.4), '#fff') +
-      k.p(E(128, 236, 14, 8), '#f08f98', 'opacity=".6"') +
-      k.l('M86 254C94 262 106 262 114 255', 3)
+    return shadow(k, 210, 330, 150) +
+      k.f('M92 214C86 150 128 104 196 96C268 88 330 120 344 178C358 238 322 296 254 316C184 336 112 300 92 214Z', 'url(#pFat)', 5.5) +
+      k.f('M120 212C116 162 150 128 200 122C256 116 306 140 316 184C326 230 300 272 250 288C196 304 134 276 120 212Z', 'url(#pMeat)', 3.5) +
+      k.f(E(156, 162, 17, 14), '#f6eedf', 3.5) + k.p(E(156, 162, 7, 6), '#dcb79c') +
+      k.s('M170 196C196 184 226 190 244 208M206 246C230 242 258 252 274 268M156 236C166 252 182 262 202 266', '#fbe6de', 3.5) +
+      k.p(E(250, 160, 34, 14), '#fff', 'opacity=".28" transform="rotate(20 250 160)"') +
+      sprig(k, 262, 336, 360, 262, 8, 15) + peppers(k, [[104, 316], [122, 330], [90, 300]])
   },
 
-  // Տավարի միս — корова (раньше — стейк)
+  // Տավարի միս — стейк на T-образной кости, жир по верхнему краю
   steak(k) {
-    const leg = (x, y, h = 72) => k.f(R(x, y, 24, h, 9), '#f4efe6', 4.5) + k.f(R(x - 1, y + h - 14, 26, 16, 5), '#4a3b34', 3.5)
-    const body = 'M120 186C120 150 152 136 202 136L302 136C342 136 356 164 354 200C352 240 334 268 294 270L178 270C142 270 120 248 120 216Z'
-    const tail = 'M350 172C370 194 374 228 368 254'
-    const patch = '#3a312d'
-    return shadow(k, 232, 322, 140) +
-      leg(150, 236) + leg(300, 236) + leg(178, 244) + leg(324, 242) +
-      k.s(tail, '#6b5a50', 4) + k.l(tail, 3) + k.f(E(368, 262, 9, 14), '#4a3b34', 3) +
-      k.f(body, 'url(#cowHide)', 5.5) +
-      k.p('M198 140C224 150 234 176 216 196C198 214 168 204 162 182C158 164 172 146 198 140Z', patch) +
-      k.p('M294 148C320 146 338 164 332 188C326 210 298 212 286 194C274 176 276 154 294 148Z', patch) +
-      k.p('M242 226C264 220 284 232 280 252C278 266 256 270 240 262C226 254 226 232 242 226Z', patch) +
-      k.f(E(248, 274, 22, 10), '#f2b3b5', 3.5) +
-      k.f('M80 120C70 104 72 90 84 84C84 98 90 110 98 116Z', '#efe4cf', 3.5) +
-      k.f('M128 120C138 104 136 90 124 84C124 98 118 110 110 116Z', '#efe4cf', 3.5) +
-      k.f(E(54, 152, 24, 11), '#efe9df', 4, 'transform="rotate(-18 54 152)"') + k.p(E(50, 153, 12, 5), '#f2b3b5', 'transform="rotate(-18 54 152)"') +
-      k.f(E(154, 152, 24, 11), '#efe9df', 4, 'transform="rotate(18 154 152)"') + k.p(E(158, 153, 12, 5), '#f2b3b5', 'transform="rotate(18 154 152)"') +
-      k.f('M66 152C66 124 84 112 104 112C124 112 142 124 142 152L140 206C140 222 128 234 104 234C80 234 68 222 68 206Z', 'url(#cowHide)', 5.5) +
-      k.p('M116 124C132 122 142 138 140 158C138 172 126 178 116 170C106 160 104 136 116 124Z', patch) +
-      k.f(E(104, 212, 38, 25), 'url(#cowNose)', 4.5) +
-      k.f(E(90, 212, 5, 7), '#7a3f42', 0) + k.f(E(118, 212, 5, 7), '#7a3f42', 0) +
-      k.f(E(86, 164, 7.5, 8.5), '#2b2320', 2) + k.p(E(84, 161, 2.4), '#fff') +
-      k.f(E(122, 164, 10, 11), '#f8f6f0', 2.5) + k.f(E(122, 165, 6.5, 7.5), '#2b2320', 0) + k.p(E(120, 162, 2.2), '#fff') +
-      k.l('M96 118C100 128 108 128 112 118', 2.5)
+    return shadow(k, 205, 330, 150) +
+      k.f('M70 190C64 128 120 84 196 84C262 84 300 104 326 136C352 168 352 236 318 274C284 312 222 330 160 318C100 306 76 252 70 190Z', 'url(#bMeat)', 5.5) +
+      k.f('M146 92C206 78 272 90 318 128C334 142 342 158 346 176L330 182C322 156 302 132 272 118C234 102 190 100 152 110Z', '#f7ead6', 0) +
+      k.l('M152 110C190 100 234 102 272 118C302 132 322 156 330 182', 3) +
+      k.f('M150 120C186 110 236 110 282 126L278 140C252 132 228 129 215 129L208 300L192 300L196 129C182 130 168 132 154 134Z', 'url(#bBone)', 3.5) +
+      k.s('M104 176C124 194 146 198 168 194M114 238C134 250 156 262 176 258M230 168C250 184 272 184 294 176M234 228C256 242 282 242 304 234M224 282C244 280 262 270 276 258', '#f4cfc5', 3.5) +
+      k.p(E(128, 158, 26, 12), '#fff', 'opacity=".22" transform="rotate(-30 128 158)"') +
+      peppers(k, [[332, 300], [350, 286], [318, 316]])
   },
 
-  // Գառան միս — овечка (раньше — каре ягнёнка)
+  // Գառան միս — каре ягнёнка: кусок с жировой «шапкой», срез и торчащие косточки
   lamb(k) {
-    const leg = (x, y) => k.f(R(x, y, 20, 62, 8), '#5f524b', 4) + k.p(R(x, y + 50, 20, 12, 5), '#2f2825')
-    const puffs = [[166, 178, 40], [210, 158, 44], [258, 158, 44], [302, 176, 40], [324, 220, 38], [300, 262, 40], [252, 274, 42], [204, 274, 42], [158, 258, 40], [142, 218, 38], [232, 214, 66]]
-    const cloud = puffs.map(([x, y, r]) => E(x, y, r)).join('')
-    const curls = [[198, 196], [246, 186], [286, 210], [222, 238], [268, 248], [184, 238], [300, 240], [236, 208]]
-      .map(([x, y]) => k.l(`M${x - 9} ${y + 3}C${x - 8} ${y - 6} ${x + 2} ${y - 8} ${x + 7} ${y - 2}`, 2.2)).join('')
-    const tuft = [[100, 150, 15], [118, 142, 17], [136, 150, 15]].map(([x, y, r]) => E(x, y, r)).join('')
-    return shadow(k, 230, 338, 140) +
-      leg(160, 262) + leg(276, 262) + leg(188, 270) + leg(304, 268) +
-      k.f(cloud, 'url(#shWool)', 11) + k.f(cloud, 'url(#shWool)', 0) + curls +
-      k.p(E(214, 184, 46, 18), '#fff', 'opacity=".45" transform="rotate(-10 214 184)"') +
-      k.f(E(80, 170, 24, 11), '#5f524b', 4, 'transform="rotate(-28 80 170)"') + k.p(E(78, 171, 13, 5), '#d9a39a', 'transform="rotate(-28 80 170)"') +
-      k.f(E(116, 204, 36, 48), 'url(#shFace)', 5, 'transform="rotate(-8 116 204)"') +
-      k.f(tuft, 'url(#shWool)', 9) + k.f(tuft, 'url(#shWool)', 0) +
-      k.f(E(150, 176, 22, 10), '#5f524b', 4, 'transform="rotate(24 150 176)"') +
-      k.f(E(102, 196, 8, 9), '#f8f6f0', 2.5) + k.f(E(102, 197, 4.5, 5.5), '#1f1a17', 0) + k.p(E(101, 195, 1.6), '#fff') +
-      k.f(E(130, 194, 8, 9), '#f8f6f0', 2.5) + k.f(E(130, 195, 4.5, 5.5), '#1f1a17', 0) + k.p(E(129, 193, 1.6), '#fff') +
-      k.p(E(112, 238, 14, 9), '#8b7b72') + k.l('M104 236C108 242 116 242 120 236M112 238V246', 2.5)
+    const bones = [0, 1, 2, 3, 4].map((i) => { const x = 128 + i * 44; return k.tube(`M${x} 200L${x + 36} 86`, 18, '#f4ecdd', 4.5) }).join('')
+    return shadow(k, 208, 326, 150) + bones +
+      k.f('M66 252C66 208 102 186 160 186L300 180C336 178 352 204 350 236C348 276 318 300 266 302L146 306C98 308 66 290 66 252Z', 'url(#lMeat)', 5.5) +
+      k.f('M78 232C84 206 112 194 160 194L300 188C330 187 344 202 347 224C320 214 298 212 270 214L150 220C116 222 94 226 78 232Z', '#f6e7d4', 0) +
+      k.l('M78 232C94 226 116 222 150 220L270 214C298 212 320 214 347 224', 3) +
+      k.l('M172 224C176 250 176 276 170 302M216 220C220 248 220 274 214 300M260 216C264 244 264 270 258 298M302 214C306 240 306 264 300 290', 2.2) +
+      k.s('M130 250C150 262 170 264 190 258M226 246C246 258 270 258 290 250', '#f1c2b8', 3) +
+      k.f(E(96, 254, 30, 46), '#f4e4d0', 4.5) + k.f(E(100, 258, 20, 32), '#c14c45', 3) +
+      k.p(E(150, 206, 30, 6), '#fff', 'opacity=".4"') +
+      sprig(k, 226, 334, 330, 300, 8, 14)
   },
 
-  // Թռչնամիս — курица (раньше — две ножки)
+  // Թռչնամիս — две куриные ножки
   chicken(k) {
-    const foot = (x) => k.tube(`M${x} 276L${x - 4} 322`, 7, '#f0b43c', 2.5) +
-      k.tube(`M${x - 4} 322L${x - 22} 330M${x - 4} 322L${x - 2} 334M${x - 4} 322L${x + 14} 330`, 5, '#f0b43c', 2.5)
-    return shadow(k, 214, 338, 130) + foot(196) + foot(236) +
-      k.f('M262 196C270 146 304 112 336 108C330 140 338 170 320 206Z', '#c25a2a', 5) +
-      k.f('M276 212C292 168 326 146 354 150C340 176 344 204 326 232Z', '#8f3f1f', 5) +
-      k.f('M118 186C118 150 150 128 186 140C222 152 250 160 290 168C324 175 334 212 314 246C292 284 240 300 196 292C150 284 118 250 118 212Z', 'url(#henBody)', 5.5) +
-      k.p(E(170, 252, 40, 22), '#f9dcae', 'opacity=".55"') +
-      k.f('M196 214C230 198 272 204 292 228C272 258 228 266 198 246C188 236 188 222 196 214Z', 'url(#henWing)', 4.5) +
-      k.l('M212 230C232 226 254 228 272 236M216 244C236 244 254 246 268 250', 2.5) +
-      k.f('M112 122C106 102 122 92 132 104C134 86 152 84 156 100C164 88 182 94 174 116C166 126 128 130 112 122Z', 'url(#henComb)', 4.5) +
-      k.f(E(140, 152, 36, 38), 'url(#henHead)', 5.5) +
-      k.f('M108 146L80 156L108 166Z', '#f0b43c', 4) +
-      k.f(E(112, 180, 9, 14), 'url(#henComb)', 3.5) +
-      k.f(E(130, 144, 7, 8), '#2b2320', 2) + k.p(E(128, 141, 2.2), '#fff') +
-      k.p(E(150, 166, 12, 7), '#f08f60', 'opacity=".45"')
+    const dots = scatter(7, 10, [-50, -86, 50, 30], inEllipse(0, -26, 46, 52), 1.4, 2.4)
+    const drum = (t) => k.g(t,
+      k.f(R(-11, 50, 22, 76, 9), 'url(#cBone)', 4.5),
+      k.f('M-24 128C-24 114 -12 112 0 118C12 112 24 114 24 128C24 142 12 144 0 138C-12 144 -24 142 -24 128Z', 'url(#cBone)', 4.5),
+      k.f('M0 -96C46 -96 64 -58 60 -22C56 14 30 38 16 66L-16 66C-30 38 -56 14 -60 -22C-64 -58 -46 -96 0 -96Z', 'url(#cSkin)', 5.5),
+      dots.map(([x, y, r]) => k.p(E(x, y, r), '#c47a45', 'opacity=".6"')).join(''),
+      k.p(E(-22, -58, 14, 22), '#fff', 'opacity=".35" transform="rotate(20 -22 -58)"'))
+    return shadow(k, 200, 330, 145) + drum('translate(146 184) rotate(32)') + drum('translate(258 190) rotate(-30)')
   },
 
   // Ձուկ — форель
@@ -458,11 +412,10 @@ function sample(a, x, y) {
   return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy
 }
 
-/** tf — сдвиг и масштаб сцены (кисть вписывает рисунок в подложку сама), K — толщина контуров. */
-async function raster(kind, pass, { tf = "translate(0 0)", K = 1 } = {}) {
-  const k = kit(pass, K)
+async function raster(kind, pass) {
+  const k = kit(pass)
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}" viewBox="0 0 400 400"><defs>${DEFS}</defs>` +
-    `${pass === 'line' ? '<rect width="400" height="400" fill="#fff"/>' : ''}<g transform="${tf}">${scenes[kind](k)}</g></svg>`
+    `${pass === 'line' ? '<rect width="400" height="400" fill="#fff"/>' : ''}${scenes[kind](k)}</svg>`
   const { data } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   return data
 }
@@ -542,249 +495,10 @@ async function save(kind, rgba) {
     .toFile(OUT + kind + '.webp')
 }
 
-// ───────────────────────── кисть ─────────────────────────
-// Те же сцены гуашью. Картина складывается из отдельных мазков, как у художника: сначала широкая кисть по всему
-// рисунку, потом средняя и тонкая — только там, где широкая не передала цвет или деталь. Мазок — изогнутая лента:
-// идёт вдоль формы (по краям и цветовым границам рисунка), начинается с нажима и сходит на нет; в нём видны следы
-// щетины, край чуть рваный. Контур — тушью: то толще, то тоньше, местами «сухая кисть» его рвёт.
-// Под рисунком — круглый мазок светлой краски (щетина идёт по кругу), вне его прозрачно: баннер тёмный.
-
-const DISC = 0.455 // радиус подложки — доля ширины картинки
-const FIT = 0.86 // рисунок не дальше этой доли радиуса подложки от центра
-const LINE_K = 0.85 // контур кисти тоньше карандашного: главное — мазки
-const INK = [0.24, 0.15, 0.1]
-const PAPER = [0.975, 0.94, 0.87]
-/** Кисти по очереди: шаг сетки, ширина и длина мазка (px рабочего холста), волоски щетины, с какой ошибки цвета нужна. */
-const BRUSHES = [
-  { step: 14, w: 26, len: 64, bristles: 8, err: 0 },
-  { step: 7, w: 12, len: 32, bristles: 4, err: 0.09 },
-  { step: 3, w: 4.5, len: 12, bristles: 0, err: 0.11 },
-]
-const ss = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t) }
-
-/** Размытие: два прохода «ящиком» радиуса r (почти гаусс). */
-function boxBlur(src, r) {
-  let a = src
-  const at = (v) => (v < 0 ? 0 : v >= W ? W - 1 : v), n = 2 * r + 1
-  for (let pass = 0; pass < 2; pass++) {
-    const h = new Float32Array(W * W), v = new Float32Array(W * W)
-    for (let y = 0; y < W; y++) {
-      let s = 0
-      for (let x = -r; x <= r; x++) s += a[y * W + at(x)]
-      for (let x = 0; x < W; x++) { h[y * W + x] = s / n; s += a[y * W + at(x + r + 1)] - a[y * W + at(x - r)] }
-    }
-    for (let x = 0; x < W; x++) {
-      let s = 0
-      for (let y = -r; y <= r; y++) s += h[at(y) * W + x]
-      for (let y = 0; y < W; y++) { v[y * W + x] = s / n; s += h[at(y + r + 1) * W + x] - h[at(y - r) * W + x] }
-    }
-    a = v
-  }
-  return a
-}
-
-/** Как вписать сцену в подложку: по пробному растру — рамка рисунка и самая дальняя от её центра точка. */
-async function placement(kind) {
-  const px = await raster(kind, 'color')
-  let x0 = W, y0 = W, x1 = 0, y1 = 0
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 10) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y) }
-  const cx = (x0 + x1 + 1) / 2, cy = (y0 + y1 + 1) / 2
-  let reach = 0
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (px[(y * W + x) * 4 + 3] > 10) reach = Math.max(reach, Math.hypot(x + 0.5 - cx, y + 0.5 - cy))
-  const u = 400 / W // пиксели пробного растра → единицы сцены
-  const s = Math.min((400 * DISC * FIT) / (reach * u), (400 * DISC * 2 * 0.86) / (Math.max(x1 - x0, y1 - y0) * u))
-  return { tf: `translate(200 200) scale(${s.toFixed(4)}) translate(${(-cx * u).toFixed(2)} ${(-cy * u).toFixed(2)})`, K: LINE_K / s }
-}
-
-/** Направление мазков в каждой точке: вдоль краёв и цветовых границ рисунка (тензор структуры),
- *  вдали от них — плавное «общее» направление руки. Угол в радианах. */
-function flowField(ca, lumA, seed) {
-  const N = W * W, f = new Float32Array(N)
-  for (let i = 0; i < N; i++) f[i] = ca[i] * (0.4 + 0.6 * lumA[i])
-  const b = boxBlur(f, 3)
-  const jxx = new Float32Array(N), jxy = new Float32Array(N), jyy = new Float32Array(N)
-  for (let y = 1; y < W - 1; y++) {
-    for (let x = 1; x < W - 1; x++) {
-      const i = y * W + x, gx = (b[i + 1] - b[i - 1]) / 2, gy = (b[i + W] - b[i - W]) / 2
-      jxx[i] = gx * gx; jxy[i] = gx * gy; jyy[i] = gy * gy
-    }
-  }
-  const sxx = boxBlur(jxx, 14), sxy = boxBlur(jxy, 14), syy = boxBlur(jyy, 14)
-  const ang = new Float32Array(N), EPS = 4e-5
-  for (let y = 0; y < W; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x
-      const hand = (-35 * Math.PI) / 180 + (vnoise(x / 220, y / 220, seed + 41) - 0.5) * 1.2 // направление мазка «от руки»
-      const g = hand + Math.PI / 2 // ему соответствует градиент поперёк
-      const a = sxx[i] + EPS * Math.cos(g) ** 2, c = syy[i] + EPS * Math.sin(g) ** 2, bxy = sxy[i] + EPS * Math.cos(g) * Math.sin(g)
-      ang[i] = 0.5 * Math.atan2(2 * bxy, a - c) + Math.PI / 2
-    }
-  }
-  return ang
-}
-
-/** Мазки одной кисти. Каждый — лента вдоль поля направлений; обрывается, где цвет рисунка сменился или рисунок кончился. */
-function strokesFor(B, T, ang, rand, need) {
-  const { ca, r, g, b } = T
-  const at = (x, y) => Math.min(W - 1, Math.max(0, Math.round(y))) * W + Math.min(W - 1, Math.max(0, Math.round(x)))
-  const out = []
-  for (let gy = 0; gy < W; gy += B.step) {
-    for (let gx = 0; gx < W; gx += B.step) {
-      const x0 = gx + rand() * B.step, y0 = gy + rand() * B.step, i0 = at(x0, y0)
-      if (ca[i0] < 0.5 || !need(gx, gy, B.step)) continue
-      const col = [r[i0], g[i0], b[i0]]
-      const len = B.len * (0.75 + 0.5 * rand()), step = Math.max(2, B.w / 3.5)
-      // центральная линия: от точки в обе стороны вдоль поля
-      const pts = [[x0, y0]]
-      for (const sign of [1, -1]) {
-        let x = x0, y = y0, px = Math.cos(ang[i0]) * sign, py = Math.sin(ang[i0]) * sign
-        for (let d = 0; d < len / 2; d += step) {
-          const i = at(x, y)
-          let dx = Math.cos(ang[i]), dy = Math.sin(ang[i])
-          if (dx * px + dy * py < 0) { dx = -dx; dy = -dy }
-          dx = 0.65 * dx + 0.35 * px; dy = 0.65 * dy + 0.35 * py
-          const n = Math.hypot(dx, dy) || 1
-          dx /= n; dy /= n
-          x += dx * step; y += dy * step
-          const j = at(x, y)
-          if (x < 0 || y < 0 || x >= W || y >= W || ca[j] < 0.35 || Math.hypot(r[j] - col[0], g[j] - col[1], b[j] - col[2]) > 0.16) break
-          if (sign > 0) pts.push([x, y]); else pts.unshift([x, y])
-          px = dx; py = dy
-        }
-      }
-      if (pts.length < 2) { const a = ang[i0], h = B.w * 0.35; pts.splice(0, 1, [x0 - Math.cos(a) * h, y0 - Math.sin(a) * h], [x0 + Math.cos(a) * h, y0 + Math.sin(a) * h]) }
-      // краска не идеально ровная: чуть светлее/темнее, теплее/холоднее
-      const v = 0.9 + 0.2 * rand(), t = (rand() - 0.5) * 0.06
-      out.push(ribbon(pts, B.w * (0.8 + 0.4 * rand()), [col[0] * v + t, col[1] * v, col[2] * v - t], B.bristles, rand))
-    }
-  }
-  // широкие мазки ложатся в случайном порядке, как у художника
-  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [out[i], out[j]] = [out[j], out[i]] }
-  return out
-}
-
-const rgb = (c) => `rgb(${c.map((v) => Math.round(clamp01(v) * 255)).join(',')})`
-/** Лента мазка вдоль pts шириной w: начало с нажимом, конец сходит на нет; поверх — волоски щетины. */
-function ribbon(pts, w, col, bristles, rand) {
-  const n = pts.length, L = [], Rt = [], norms = [], widths = []
-  for (let k = 0; k < n; k++) {
-    const [ax, ay] = pts[Math.max(0, k - 1)], [bx, by] = pts[Math.min(n - 1, k + 1)]
-    const l = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / l, ny = (bx - ax) / l
-    const t = n === 1 ? 0.5 : k / (n - 1)
-    const wt = w * (t < 0.15 ? 0.7 + 2 * t : t > 0.65 ? Math.max(0.25, 1 - 2.1 * (t - 0.65)) : 1)
-    norms.push([nx, ny]); widths.push(wt)
-    L.push(`${(pts[k][0] + nx * wt / 2).toFixed(1)} ${(pts[k][1] + ny * wt / 2).toFixed(1)}`)
-    Rt.push(`${(pts[k][0] - nx * wt / 2).toFixed(1)} ${(pts[k][1] - ny * wt / 2).toFixed(1)}`)
-  }
-  let s = `<path d="M${L.join('L')}L${Rt.reverse().join('L')}Z" fill="${rgb(col)}" fill-opacity="${(0.9 + 0.1 * rand()).toFixed(2)}"/>`
-  for (let q = 0; q < bristles; q++) {
-    const o = (rand() - 0.5) * 0.85, k0 = Math.floor(rand() * 0.3 * n), k1 = Math.max(k0 + 1, Math.ceil((0.6 + 0.4 * rand()) * (n - 1)))
-    const line = pts.slice(k0, k1 + 1).map(([x, y], m) => {
-      const k = k0 + m
-      return `${(x + norms[k][0] * widths[k] * o).toFixed(1)} ${(y + norms[k][1] * widths[k] * o).toFixed(1)}`
-    })
-    if (line.length < 2) continue
-    const dark = rand() < 0.6, c = dark ? col.map((v) => v * 0.72) : col.map((v) => v + (1 - v) * 0.4)
-    s += `<path d="M${line.join('L')}" fill="none" stroke="${rgb(c)}" stroke-width="${(1.2 + rand() * 1.8).toFixed(1)}" stroke-opacity="${(0.35 + 0.35 * rand()).toFixed(2)}" stroke-linecap="round"/>`
-  }
-  return s
-}
-
-/** Мазки → растр. Края мазков чуть рвёт шум (feDisplacementMap): у настоящей кисти край не гладкий. */
-async function paint(strokes, seed) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${W}" viewBox="0 0 ${W} ${W}"><defs>` +
-    `<filter id="rough" x="-2%" y="-2%" width="104%" height="104%"><feTurbulence type="fractalNoise" baseFrequency=".07" numOctaves="2" seed="${seed % 97}"/>` +
-    `<feDisplacementMap in="SourceGraphic" scale="4.5" xChannelSelector="R" yChannelSelector="G"/></filter></defs>` +
-    `<g filter="url(#rough)">${strokes.join('')}</g></svg>`
-  const { data } = await sharp(Buffer.from(svg)).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
-  return data
-}
-
-async function brush(color, lines, seed) {
-  const N = W * W
-  const ca = new Float32Array(N), r = new Float32Array(N), g = new Float32Array(N), b = new Float32Array(N), lumA = new Float32Array(N), ink = new Float32Array(N)
-  for (let i = 0; i < N; i++) {
-    ca[i] = color[i * 4 + 3] / 255
-    r[i] = color[i * 4] / 255; g[i] = color[i * 4 + 1] / 255; b[i] = color[i * 4 + 2] / 255
-    lumA[i] = lum(color[i * 4], color[i * 4 + 1], color[i * 4 + 2]) / 255
-    ink[i] = 1 - lum(lines[i * 4], lines[i * 4 + 1], lines[i * 4 + 2]) / 255
-  }
-  const T = { ca, r, g, b }, ang = flowField(ca, lumA, seed), rand = rng(seed + 99)
-
-  // кисти по очереди: следующая кладёт мазки только в клетки, где цвет пока далёк от рисунка
-  const strokes = []
-  let done = null
-  for (const B of BRUSHES) {
-    const need = (gx, gy, step) => {
-      if (!done) return true
-      let e = 0, n = 0
-      for (let y = gy; y < Math.min(W, gy + step); y++) {
-        for (let x = gx; x < Math.min(W, gx + step); x++) {
-          const i = y * W + x
-          if (ca[i] < 0.5) continue
-          const a = done[i * 4 + 3] / 255
-          e += a < 0.5 ? 1 : Math.hypot(done[i * 4] / 255 - r[i], done[i * 4 + 1] / 255 - g[i], done[i * 4 + 2] / 255 - b[i]); n++
-        }
-      }
-      return n > 0 && e / n > B.err
-    }
-    strokes.push(...strokesFor(B, T, ang, rand, need))
-    done = await paint(strokes, seed)
-  }
-
-  const ib = boxBlur(ink, 2)
-  const C = W / 2, RD = W * DISC, TURN = 2 * Math.PI * RD
-  /** Шум вдоль круга без шва: у θ = ±π значения с двух концов дуги смешиваются. */
-  const ring = (arc, f) => { const w = ss(0.85 * TURN, TURN, arc); return f(arc) * (1 - w) + f(arc - TURN) * w }
-  const out = new Float32Array(N * 4)
-  for (let y = 0; y < W; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x
-
-      // ── подложка: один круговой мазок светлой краски
-      const dx = x - C, dy = y - C, rr = Math.hypot(dx, dy), th = Math.atan2(dy, dx), arc = (th + Math.PI) * RD
-      const edge = RD * (1 + 0.035 * (vnoise(Math.cos(th) * 2.4 + 9, Math.sin(th) * 2.4 + 9, seed + 31) - 0.5))
-      const dBr = ring(arc, (a) => vnoise(a / 70, rr / 2.2, seed + 32)), dBand = ring(arc, (a) => vnoise(a / 170, rr / 24, seed + 33))
-      const dA = ss(edge + 12, edge - 12, rr + (dBr - 0.5) * 30 + (dBand - 0.5) * 14)
-      const dk = (0.95 + 0.07 * dBand + 0.03 * (dBr - 0.5)) * (1 - 0.06 * ss(edge - 46, edge - 6, rr))
-      let R0 = PAPER[0] * dk * dA, G0 = PAPER[1] * dk * dA, B0 = PAPER[2] * dk * dA, A = dA
-
-      // ── мазки краски
-      const pa = done[i * 4 + 3] / 255
-      if (pa > 0) {
-        R0 = R0 * (1 - pa) + (done[i * 4] / 255) * pa; G0 = G0 * (1 - pa) + (done[i * 4 + 1] / 255) * pa; B0 = B0 * (1 - pa) + (done[i * 4 + 2] / 255) * pa
-        A = A * (1 - pa) + pa
-      }
-
-      // ── тушь: толщина гуляет (порог по размытой линии), рука чуть дрожит, местами сухая кисть рвёт линию
-      const lx = x + (vnoise(x / 55, y / 55, seed + 21) - 0.5) * 5, ly = y + (vnoise(x / 55, y / 55, seed + 22) - 0.5) * 5
-      const thr = 0.5 + (vnoise(x / 26, y / 26, seed + 23) - 0.5) * 0.62
-      let li = ss(thr - 0.1, thr + 0.1, sample(ib, lx, ly))
-      if (li > 0) {
-        li *= 1 - 0.7 * ss(0.66, 0.86, vnoise(x / 60, y / 60, seed + 24)) * ss(0.55, 0.25, vnoise(x / 2.5, y / 9, seed + 25))
-        li *= 0.84 + 0.16 * vnoise(x / 20, y / 20, seed + 26)
-        R0 = R0 * (1 - li) + INK[0] * li; G0 = G0 * (1 - li) + INK[1] * li; B0 = B0 * (1 - li) + INK[2] * li; A = A * (1 - li) + li
-      }
-      out[i * 4] = A ? R0 / A : 1; out[i * 4 + 1] = A ? G0 / A : 1; out[i * 4 + 2] = A ? B0 / A : 1; out[i * 4 + 3] = A
-    }
-  }
-  return out
-}
-
-async function saveBrush(kind, rgba) {
-  const buf = Buffer.alloc(W * W * 4)
-  for (let i = 0; i < buf.length; i++) buf[i] = Math.round(clamp01(rgba[i]) * 255)
-  await sharp(buf, { raw: { width: W, height: W, channels: 4 } }).resize(SIZE, SIZE, { kernel: 'lanczos3' })
-    .webp({ quality: 86, alphaQuality: 90, effort: 6 }).toFile(OUT + kind + '.webp')
-}
-
-const only = ARGS.filter((a) => !a.startsWith('--'))
+const only = process.argv.slice(2)
 for (const kind of Object.keys(scenes).filter((k) => !only.length || only.includes(k))) {
   const seed = [...kind].reduce((s, ch) => (s * 31 + ch.charCodeAt(0)) & 0xffff, 7) // свои штрихи у каждого рисунка, но всегда одни и те же
   const t = Date.now()
-  if (BRUSH) {
-    const at = await placement(kind)
-    await saveBrush(kind, await brush(await raster(kind, 'color', at), await raster(kind, 'line', at), seed))
-  } else await save(kind, pencil(await raster(kind, 'color'), await raster(kind, 'line'), seed))
+  await save(kind, pencil(await raster(kind, 'color'), await raster(kind, 'line'), seed))
   console.log(`${kind}.webp  ${Date.now() - t} мс`)
 }

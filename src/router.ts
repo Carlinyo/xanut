@@ -32,7 +32,8 @@ const router = createRouter({
     { path: '/account', component: AccountView, meta: { auth: true, title: 'account.mine' } },
     { path: '/admin', component: () => import('./views/AdminView.vue'), meta: { auth: true, admin: true, title: 'admin.title' } },
     // раздел работников: только заказы и кнопка «Готово» (роль worker; администратор тоже может открыть)
-    { path: '/staff', component: () => import('./views/StaffView.vue'), meta: { auth: true, staff: true, title: 'staff.title' } },
+    // meta.bare — без шапки, подвала и каталога (App.vue): работнику нужно только окно заказов
+    { path: '/staff', component: () => import('./views/StaffView.vue'), meta: { auth: true, staff: true, bare: true, title: 'staff.title' } },
     // сюда AmeriaBank возвращает покупателя после оплаты (адрес задаёт сервер: BackURL)
     { path: '/payment/return', component: () => import('./views/PaymentReturnView.vue'), meta: { title: 'pay.pageTitle' } },
     // неизвестный адрес — страница «не найдено» с путями дальше (а не молчаливый переход на главную)

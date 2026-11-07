@@ -2,9 +2,8 @@
 import ProductArt from '../atoms/ProductArt.vue'
 import type { LinkTo } from '../../types'
 
-// painting — рисунок раздела кистью (public/img/brush): круглый мазок светлой краски уже в картинке;
-// без него — рисунок art или фото image из public/img/art
-defineProps<{ title: string; text: string; art: string; image?: string; painting?: string; to: LinkTo }>()
+// image — фото из public/img/art вместо рисунка art (у рыбы и кролика своего рисунка нет)
+defineProps<{ title: string; text: string; art: string; image?: string; to: LinkTo }>()
 </script>
 
 <template>
@@ -14,7 +13,7 @@ defineProps<{ title: string; text: string; art: string; image?: string; painting
       <p>{{ text }}</p>
       <span class="promo__cta">{{ $t('common.view') }}</span>
     </div>
-    <ProductArt :kind="art" :src="painting || image" class="promo__art" :class="{ 'promo__art--paint': painting }" aria-hidden="true" />
+    <ProductArt :kind="art" :src="image" class="promo__art" aria-hidden="true" />
   </RouterLink>
 </template>
 
@@ -25,11 +24,9 @@ defineProps<{ title: string; text: string; art: string; image?: string; painting
 .promo__cta { display:inline-block; padding:7px 16px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:13px; font-weight:700; transition:padding .3s var(--ease); }
 /* заголовок в одну строку, место ему уступает картинка: «Նապաստակի միս» в узком баннере не переносится */
 .promo__art { width:clamp(96px, 11vw, 140px); height:clamp(96px, 11vw, 140px); flex:0 1 auto; min-width:72px; transition:transform .6s var(--ease); }
-/* рисунок кистью — с подложкой: чуть крупнее и с тенью, чтобы мазок «лежал» на тёмном баннере; круглый — не сплющивается в узком */
-.promo__art--paint { width:clamp(108px, 12.5vw, 156px); height:auto; aspect-ratio:1; filter:drop-shadow(0 8px 14px rgb(0 0 0 / .45)); }
 @media (hover:hover) {
   .promo:hover { transform:translateY(-4px); box-shadow:var(--shadow-md); }
-  .promo:hover .promo__art { transform:scale(1.1) rotate(-5deg); }
+  .promo:hover .promo__art { transform:scale(1.12) rotate(-6deg); }
   .promo:hover .promo__cta { padding-inline:22px; }
 }
 </style>

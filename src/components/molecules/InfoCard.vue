@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import ProductArt from '../atoms/ProductArt.vue'
-defineProps<{ art: string; title: string; text: string }>()
+// image — своё фото из public/img/art вместо рисунка art
+defineProps<{ art: string; image?: string; title: string; text: string }>()
 </script>
 
 <template>
   <div class="info">
-    <ProductArt :kind="art" :alt="title" class="info__art" />
+    <ProductArt :kind="art" :src="image" :alt="title" class="info__art" />
     <h3>{{ title }}</h3>
     <p>{{ text }}</p>
   </div>
