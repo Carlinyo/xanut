@@ -49,6 +49,7 @@ export function commonErrorKey(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.code === 'NETWORK') return 'errors.network'
     if (e.status === 429) return 'errors.tooMany'
+    if (e.status === 503 || e.code.startsWith('DB_')) return 'errors.unavailable' // база сервера временно не отвечает
   }
   return 'errors.generic'
 }
