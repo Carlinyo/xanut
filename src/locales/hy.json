@@ -128,8 +128,7 @@
       "title": "Տավարի միս",
       "text": "Փափուկ միս, մեջք, սուկի",
       "cat": 2,
-      "art": "steak",
-      "image": "/img/art/tavari_papuk.webp"
+      "art": "steak"
     },
     {
       "title": "Գառան միս",
@@ -147,15 +146,13 @@
       "title": "Ձուկ",
       "text": "Իշխան և ստերլետ",
       "cat": 13,
-      "art": "grill",
-      "image": "/img/art/dzuk_ishxan.webp"
+      "art": "fish"
     },
     {
       "title": "Նապաստակի միս",
       "text": "Նիհար և դիետիկ",
       "cat": 14,
-      "art": "steak",
-      "image": "/img/art/napli.webp"
+      "art": "rabbit"
     }
   ],
   "features": [

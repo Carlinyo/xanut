@@ -2,6 +2,8 @@
 html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
 /* «липкий» футер: при коротком содержимом футер всё равно прижат к низу окна */
 #app { display:flex; flex-direction:column; min-height:100vh; min-height:100dvh; }
+/* index.html прячет страницу, пока не пришли стили (иначе мелькает голая разметка) — этот файл её показывает */
+#app { visibility:visible; }
 /* main не короче экрана: подвал не появляется наверху, пока страница или её данные грузятся, и не прыгает вниз потом */
 #app > main { flex:1 0 auto; min-height:100vh; }
 body { margin:0; font-family:var(--font); color:var(--ink); background:var(--surface) url(/img/bg/paper.webp) repeat; line-height:1.5; -webkit-font-smoothing:antialiased; overflow-x:clip; }
