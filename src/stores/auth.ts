@@ -34,9 +34,10 @@ export const useAuth = defineStore('auth', {
       this.user = r
       return null
     },
-    /** Шаг 2: код из письма или SMS. */
-    async verify(challengeId: string, code: string, trustDevice: boolean) {
-      this.user = await api<PublicUser>('/auth/verify', { method: 'POST', body: { challengeId, code, trustDevice } })
+    /** Шаг 2: код из письма или SMS — или, если SMS отправлял Firebase, его подтверждение ({ firebaseToken }). */
+    async verify(challengeId: string, proof: string | { firebaseToken: string }, trustDevice: boolean) {
+      const body = typeof proof === 'string' ? { challengeId, code: proof, trustDevice } : { challengeId, firebaseToken: proof.firebaseToken, trustDevice }
+      this.user = await api<PublicUser>('/auth/verify', { method: 'POST', body })
     },
     async resend(challengeId: string): Promise<{ expiresIn: number; resendIn: number; devCode?: string }> {
       return api('/auth/resend', { method: 'POST', body: { challengeId } })
@@ -46,8 +47,13 @@ export const useAuth = defineStore('auth', {
       return api<OtpChallenge>('/auth/reset', { method: 'POST', body: { email } })
     },
     /** Шаг 2: код и новый пароль. Сервер закрывает все прежние сессии и сразу входит. */
-    async resetConfirm(challengeId: string, code: string, password: string) {
-      this.user = await api<PublicUser>('/auth/reset/confirm', { method: 'POST', body: { challengeId, code, password } })
+    async resetConfirm(challengeId: string, proof: string | { firebaseToken: string }, password: string) {
+      const body = typeof proof === 'string' ? { challengeId, code: proof, password } : { challengeId, firebaseToken: proof.firebaseToken, password }
+      this.user = await api<PublicUser>('/auth/reset/confirm', { method: 'POST', body })
+    },
+    /** Подтвердить телефон аккаунта: SMS-код проверил Firebase, сервер сверяет номер. */
+    async verifyPhone(firebaseToken: string) {
+      this.user = await api<PublicUser>('/auth/phone/verify', { method: 'POST', body: { firebaseToken } })
     },
     /** Мои данные: имя, телефон, адрес доставки. */
     async updateProfile(data: ProfileData) {

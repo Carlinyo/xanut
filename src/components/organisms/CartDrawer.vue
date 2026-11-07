@@ -19,7 +19,10 @@ import type { CartItem } from '../../types'
 
 const emit = defineEmits<{ close: [] }>()
 const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus(), confirm = useConfirm()
-const done = ref(false)
+/** Заказ принят: ok — как обычно; payLater — онлайн-оплата не открылась, оплатить можно из «Իմ հաշիվը». */
+const done = ref<'' | 'ok' | 'payLater'>('')
+// дальняя доставка: подпись, пока адрес не выбран (выбран дальний — цена уже в итоге)
+const far = computed(() => catalog.config.deliveryFar)
 async function change(i: CartItem, delta: number) {
   if (i.qty + delta <= 0 && !(await confirm.ask({ title: t('confirm.removeLine.title'), text: i.name, yes: t('confirm.removeLine.yes'), tone: 'danger' }))) return
   cart.change(i.id, delta)
@@ -43,7 +46,10 @@ const methodOptions = computed(() => [
         <AppButton variant="close" :aria-label="$t('common.close')" @click="emit('close')">✕</AppButton>
       </header>
 
-      <p v-if="done" class="drawer__ok">{{ $t('cart.done') }}</p>
+      <p v-if="done" class="drawer__ok" :class="{ 'is-warn': done === 'payLater' }" role="status">
+        {{ $t(done === 'payLater' ? 'cart.donePayLater' : 'cart.done') }}
+        <RouterLink v-if="done === 'payLater'" to="/account" @click="emit('close')">{{ $t('account.mine') }} →</RouterLink>
+      </p>
       <p v-else-if="!cart.items.length" class="muted">{{ $t('cart.empty') }}</p>
 
       <template v-else>
@@ -63,7 +69,7 @@ const methodOptions = computed(() => [
 
         <ChoiceToggle v-model="method" :options="methodOptions" :label="$t('cart.methodLabel')" class="drawer__method" />
         <p v-if="cart.method === 'pickup'" class="drawer__pickup">🏪 {{ $t('cart.pickupHint', { address: $t('contact.address') }) }}</p>
-        <p v-else class="drawer__pickup">💵 {{ $t('cart.deliveryCash') }}</p>
+        <p v-else class="drawer__pickup">{{ catalog.config.onlinePay ? '💳 ' + $t('cart.deliveryOnline') : '💵 ' + $t('cart.deliveryCash') }}</p>
 
         <dl class="sum">
           <dt>{{ $t('cart.items') }}</dt><dd>{{ money(cart.subtotal) }}</dd>
@@ -76,10 +82,13 @@ const methodOptions = computed(() => [
         <p v-if="showPerks && level" class="drawer__perk">
           {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b> · {{ perksText(level.perks) }}
         </p>
-        <p v-if="cart.delivery" class="muted">{{ $t('cart.freeFrom', { amount: catalog.config.freeDeliveryFrom.toLocaleString('en-US') }) }}</p>
+        <p v-if="cart.delivery && !cart.far" class="muted">{{ $t('cart.freeFrom', { amount: catalog.config.freeDeliveryFrom.toLocaleString('en-US') }) }}</p>
+        <p v-if="cart.method === 'delivery' && far" class="muted">
+          {{ $t(cart.far ? 'cart.farApplied' : 'cart.farNote', { km: far.overKm, fee: money(far.fee) }) }}
+        </p>
         <p v-if="cart.pointsEarned" class="drawer__earn">{{ $t(auth.isAuth ? 'bonus.earnHint' : 'bonus.guestEarn', { n: cart.pointsEarned.toLocaleString('en-US') }) }}</p>
 
-        <CheckoutForm v-if="auth.isAuth" @done="done = true" />
+        <CheckoutForm v-if="auth.isAuth" @done="done = $event" />
         <div v-else class="gate">
           <p>{{ $t('cart.gate') }}</p>
           <AppButton :to="{ path: '/login', query: { redirect: route.fullPath } }" @click="emit('close')">{{ $t('auth.login') }}</AppButton>
@@ -98,6 +107,8 @@ h2 { margin:0; font-size:22px; }
 .drawer__method { margin-bottom:12px; }
 .drawer__pickup { margin:-4px 0 12px; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
 .drawer__ok { padding:14px; border-radius:var(--r-md); background:#e8f6ec; color:var(--green); font-weight:700; animation:rise .5s var(--ease); }
+.drawer__ok.is-warn { background:var(--cream); color:#7a5600; }
+.drawer__ok a { display:inline-block; margin-top:6px; text-decoration:underline; text-underline-offset:2px; }
 .sum { display:grid; grid-template-columns:1fr auto; gap:8px; margin:0; padding:14px; border-radius:var(--r-md); background:var(--bg); }
 .sum dt { color:var(--muted); }
 .sum dd { margin:0; text-align:right; }

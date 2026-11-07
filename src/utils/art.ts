@@ -16,7 +16,7 @@ export function artUrl(kind?: string): string {
 
 // Рисунки категорий «цветными карандашами» (public/img/cat, делает tools/render-sketches.mjs): плитки раздела
 // «Տեսականի» на главной и выбор рисунка в админке. Тот же список — на сервере (config.ts → CATEGORY_ARTS).
-export const CATEGORY_ARTS = ['kebab', 'ribs', 'steak', 'lamb', 'chicken', 'fish', 'rabbit', 'sausage', 'veg', 'bread', 'dairy', 'spice', 'drink', 'grill']
+export const CATEGORY_ARTS = ['kebab', 'ribs', 'steak', 'lamb', 'chicken', 'fish', 'rabbit', 'sausage', 'veg', 'bread', 'dairy', 'spice', 'drink', 'grill', 'wine', 'vodka', 'cognac']
 
 /** Карандашный рисунок категории; undefined — такого нет, плитка показывает обычную картинку. */
 export function categorySketchUrl(art: string): string | undefined {

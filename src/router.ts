@@ -31,6 +31,10 @@ const router = createRouter({
     { path: '/forgot', component: AuthView, props: { mode: 'reset' }, meta: { guest: true, title: 'reset.title' } },
     { path: '/account', component: AccountView, meta: { auth: true, title: 'account.mine' } },
     { path: '/admin', component: () => import('./views/AdminView.vue'), meta: { auth: true, admin: true, title: 'admin.title' } },
+    // раздел работников: только заказы и кнопка «Готово» (роль worker; администратор тоже может открыть)
+    { path: '/staff', component: () => import('./views/StaffView.vue'), meta: { auth: true, staff: true, title: 'staff.title' } },
+    // сюда AmeriaBank возвращает покупателя после оплаты (адрес задаёт сервер: BackURL)
+    { path: '/payment/return', component: () => import('./views/PaymentReturnView.vue'), meta: { title: 'pay.pageTitle' } },
     // неизвестный адрес — страница «не найдено» с путями дальше (а не молчаливый переход на главную)
     { path: '/:pathMatch(.*)*', component: () => import('./views/NotFoundView.vue'), meta: { title: 'notFound.title' } },
   ],
@@ -41,6 +45,7 @@ router.beforeEach(async (to) => {
   if (to.meta.auth || to.meta.guest) await auth.restore() // вошёл ли человек, станет известно после ответа /auth/me
   if (to.meta.auth && !auth.isAuth) return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.admin && auth.user?.role !== 'admin') return '/' // админка — только для роли admin (сервер проверяет то же самое)
+  if (to.meta.staff && auth.user?.role !== 'worker' && auth.user?.role !== 'admin') return '/'
   if (to.meta.guest && auth.isAuth) return '/'
   return true
 })

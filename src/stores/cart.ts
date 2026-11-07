@@ -6,7 +6,7 @@ import { useBonus } from './bonus'
 import { isKebab, isMeat, isValidKg, kebabPrice, weightPrice } from '../utils/kebab'
 import { applyPerks } from '../utils/segments'
 import { uuid } from '../utils/id'
-import type { CartItem, GeoPoint, KebabOptions, KebabSelection, Order, Perks, ProductUnit } from '../types'
+import type { CartItem, GeoPoint, KebabOptions, KebabSelection, Order, PaymentMethod, Perks, ProductUnit } from '../types'
 
 /** selection — порция из окна шашлыка; kg (+ productId) — мясо на вес из окна выбора веса; иначе — штучный товар
  *  (сюда передают и сам товар каталога: его поле kebab — «это хоровац», а не выбор из окна шашлыка). */
@@ -18,7 +18,7 @@ export interface Addable {
 /** delivery — курьер (платно, см. deliveryFee), pickup — самовывоз из магазина (бесплатно, адрес не нужен). */
 export type DeliveryMethod = 'delivery' | 'pickup'
 /** point — точка доставки на карте (тогда address — описание для курьера). */
-export interface CheckoutData { name: string; phone: string; address: string; point?: GeoPoint | null; slot: string; payment: 'cash' | 'card'; delivery: DeliveryMethod; saveProfile?: boolean; comment?: string }
+export interface CheckoutData { name: string; phone: string; address: string; point?: GeoPoint | null; slot: string; payment: PaymentMethod; delivery: DeliveryMethod; saveProfile?: boolean; comment?: string }
 
 /** Сервер принимает не больше 99 штук одной позиции. */
 export const MAX_QTY = 99
@@ -61,7 +61,9 @@ function storedMethod(): DeliveryMethod {
 }
 
 export const useCart = defineStore('cart', {
-  state: () => ({ items: stored(), method: storedMethod() }),
+  // deliveryKm — до адреса доставки по прямой (км): его задаёт форма заказа по точке на карте или проверенному адресу;
+  // null — адрес ещё неизвестен (тогда показываем обычную цену доставки)
+  state: () => ({ items: stored(), method: storedMethod(), deliveryKm: null as number | null }),
   getters: {
     count: (s): number => s.items.reduce((n, i) => n + i.qty, 0),
     // price здесь — только для показа: сервер пересчитывает цены сам (у бонусных товаров price = 0)
@@ -76,10 +78,16 @@ export const useCart = defineStore('cart', {
     },
     /** Акция группы покупателя (новый, постоянный, VIP): скидка, баллы, бесплатная доставка. */
     perks: (): Perks => useBonus().perks,
-    /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки. */
+    /** Адрес дальше deliveryFar.overKm от магазина — дальняя доставка (как решит сервер). */
+    far(): boolean {
+      const far = useCatalog().config.deliveryFar
+      return !!far && this.deliveryKm !== null && this.deliveryKm > far.overKm
+    },
+    /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки;
+     *  дальняя доставка стоит deliveryFar.fee при любой сумме (бесплатная доставка по акции группы — и на неё). */
     priced(): ReturnType<typeof applyPerks> {
-      const { deliveryFee, freeDeliveryFrom } = useCatalog().config
-      const base = this.subtotal === 0 || this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
+      const { deliveryFee, freeDeliveryFrom, deliveryFar } = useCatalog().config
+      const base = this.subtotal === 0 ? 0 : this.far && deliveryFar ? deliveryFar.fee : this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
       return applyPerks(this.subtotal, base, this.perks)
     },
     /** Скидка по акции группы (֏). */

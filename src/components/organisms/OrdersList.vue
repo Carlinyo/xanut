@@ -7,6 +7,8 @@ import { useFeedback } from '../../stores/feedback'
 import { useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
+import { ApiError, commonErrorKey } from '../../api'
+import { canPay, goToBank, paymentLabel, startPayment } from '../../utils/payment'
 import type { Order, OrderMark, OrderReview } from '../../types'
 import ReviewForm from '../molecules/ReviewForm.vue'
 import StarRating from '../atoms/StarRating.vue'
@@ -36,6 +38,22 @@ async function repeat(o: Order) {
     : { text: t('account.repeated'), ok: true }
   if (added) ui.cartOpen = true
 }
+
+/** Онлайн-оплата не прошла или страницу банка закрыли — оплатить снова (сервер сначала спросит банк о прошлой попытке). */
+const paying = ref<number | null>(null)
+async function pay(o: Order) {
+  if (paying.value) return
+  paying.value = o.id
+  try {
+    const r = await startPayment(o.id)
+    if (r.payUrl && goToBank(r.payUrl)) return
+    Object.assign(o, { paid: r.order.paid, pay: r.order.pay, bonus: r.order.bonus }) // уже оплачен
+    notes[o.id] = { text: t('pay.alreadyPaid'), ok: true }
+  } catch (e) {
+    const code = e instanceof ApiError ? e.code : ''
+    notes[o.id] = { text: t(code === 'PAYMENT_INIT_FAILED' ? 'pay.initFailed' : code === 'ORDER_CANCELLED' ? 'pay.cancelled' : commonErrorKey(e)), ok: false }
+  } finally { if (paying.value === o.id) paying.value = null }
+}
 </script>
 
 <template>
@@ -54,7 +72,12 @@ async function repeat(o: Order) {
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
       <small v-if="o.time">🕘 {{ formatSlot(o.time, o.exactTime) }}</small>
+      <small>💳 {{ paymentLabel(o.payment, o.delivery) }}<template v-if="o.pay?.card"> · {{ o.pay.card }}</template></small>
       <small v-if="o.comment">💬 {{ o.comment }}</small>
+      <div v-if="canPay(o)" class="orders__paynow">
+        <small>{{ $t(o.pay?.state === 'failed' ? 'pay.failedNote' : 'pay.pendingNote') }}</small>
+        <AppButton size="sm" :disabled="paying === o.id" @click="pay(o)">💳 {{ paying === o.id ? $t('pay.opening') : $t('pay.payNow') }}</AppButton>
+      </div>
       <small v-if="o.discount" class="orders__disc">🏷 {{ discountLabel(o.segment) }}՝ −{{ money(o.discount) }}</small>
       <small v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="orders__bonus" :class="`is-${o.bonus.state}`">
         <span v-if="o.bonus.earned">⭐ {{ $t('bonus.earned', { n: o.bonus.earned.toLocaleString('en-US') }) }} {{ $t('bonus.unit') }} · {{ $t('bonus.state.' + o.bonus.state) }}</span>
@@ -106,4 +129,6 @@ small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__review q { overflow-wrap:anywhere; white-space:pre-line; }
 .orders__thanks { color:var(--green); font-weight:700; }
 .orders__write { align-self:flex-start; margin-top:6px; }
+.orders__paynow { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:4px; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; }
+.orders__paynow small { flex:1 1 200px; color:var(--red); font-weight:600; }
 </style>

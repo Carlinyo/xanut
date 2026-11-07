@@ -9,9 +9,13 @@ import { checkPhone, formatPhone } from '../../utils/phone'
 import InfoPanel from '../molecules/InfoPanel.vue'
 import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
+import PhoneVerify from '../molecules/PhoneVerify.vue'
 import AppButton from '../atoms/AppButton.vue'
+import { firebaseReady } from '../../utils/firebasePhone'
 
 const auth = useAuth()
+// подтвердить телефон по SMS (Firebase) — если сервер настроил Firebase, а номер ещё не подтверждён
+const canVerifyPhone = computed(() => firebaseReady() && !!auth.user && !auth.user.phoneVerified && checkPhone(auth.user.phone).ok)
 const editing = ref(false), busy = ref(false), done = ref(false)
 const form = reactive({ name: '', phone: '', address: '' })
 const errors = reactive({ name: '', phone: '', address: '', form: '' })
@@ -52,7 +56,8 @@ async function save() {
     <template v-if="!editing">
       <p><b>{{ auth.user.name }}</b></p>
       <p>✉️ {{ auth.user.email }}</p>
-      <p>📞 {{ formatPhone(auth.user.phone) }}</p>
+      <p>📞 {{ formatPhone(auth.user.phone) }}<span v-if="auth.user.phoneVerified" class="pc__verified" :title="$t('phone.verified')"> ✓</span></p>
+      <PhoneVerify v-if="canVerifyPhone" />
       <p>📍 <span :class="{ muted: !auth.user.address }">{{ auth.user.address || $t('account.noAddress') }}</span></p>
       <p v-if="done" class="pc__ok" role="status">✓ {{ $t('account.saved') }}</p>
       <div class="pc__actions"><AppButton variant="light" @click="start">✏️ {{ $t('account.edit') }}</AppButton><slot /></div>
@@ -75,6 +80,7 @@ async function save() {
 .pc__form { display:flex; flex-direction:column; gap:12px; }
 .pc__actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
 .pc__ok { color:var(--green); font-weight:600; }
+.pc__verified { color:var(--green); font-weight:800; }
 .pc__err { margin:0; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:13px; }
 p { overflow-wrap:anywhere; }
 </style>

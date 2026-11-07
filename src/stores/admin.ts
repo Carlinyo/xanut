@@ -95,6 +95,12 @@ export const useAdmin = defineStore('admin', {
       this.put(r.order)
       return r.order
     },
+    /** Онлайн-оплата: спросить у банка, чем закончился платёж (покупатель закрыл страницу банка, не вернувшись на сайт). */
+    async checkPayment(id: number): Promise<AdminOrder> {
+      const r = await api<{ order: AdminOrder }>(`/admin/orders/${id}/payment/check`, { method: 'POST', timeout: 30_000 })
+      this.put(r.order)
+      return r.order
+    },
 
     async loadUsers() {
       const r = await api<{ users: AdminUser[]; segments: SegmentSettings }>('/admin/users')
@@ -103,6 +109,12 @@ export const useAdmin = defineStore('admin', {
     /** Назначить группу клиенту; null — снова считать по покупкам. */
     async setSegment(id: string, segment: Segment | null): Promise<AdminUser> {
       const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { segment } })
+      this.users = this.users.map((x) => (x.id === u.id ? u : x))
+      return u
+    },
+    /** Роль: worker — работник (раздел «Պատվերներ» для работников), customer — обычный покупатель. */
+    async setRole(id: string, role: 'worker' | 'customer'): Promise<AdminUser> {
+      const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { role } })
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
     },

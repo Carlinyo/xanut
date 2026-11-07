@@ -14,7 +14,8 @@ import CustomerOrders from './CustomerOrders.vue'
 const showOrders = ref(false)
 
 const props = defineProps<{ user: AdminUser; busy?: boolean }>()
-const emit = defineEmits<{ segment: [value: Segment | null] }>()
+// role: true — сделать работником (раздел заказов для работников), false — снова покупатель
+const emit = defineEmits<{ segment: [value: Segment | null]; role: [worker: boolean] }>()
 
 const u = computed(() => props.user)
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
@@ -36,6 +37,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <span class="cu__seg" :class="`is-${u.segment}`">{{ SEGMENT_ICON[u.segment] }} {{ $t('segments.short.' + u.segment) }}</span>
         <span v-if="u.segmentManual" class="cu__tag">{{ $t('admin.customers.manual') }}</span>
         <span v-if="u.role === 'admin'" class="cu__tag">⚙ {{ $t('admin.link') }}</span>
+        <span v-else-if="u.role === 'worker'" class="cu__tag is-worker">🧑‍🍳 {{ $t('admin.customers.role.worker') }}</span>
       </div>
       <div class="cu__contacts">
         <a :href="`mailto:${u.email}`">✉ {{ u.email }}<span v-if="u.emailVerified" class="cu__ok" :title="$t('admin.customers.verified')"> ✓</span></a>
@@ -70,6 +72,10 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
       </AppInput>
     </label>
+    <!-- работник: доступ только к заказам (кнопка «Готово»); администратора здесь не поменять -->
+    <button v-if="u.role !== 'admin'" type="button" class="cu__role" :disabled="busy" @click="emit('role', u.role !== 'worker')">
+      {{ u.role === 'worker' ? '↩ ' + $t('admin.customers.role.undo') : '🧑‍🍳 ' + $t('admin.customers.role.make') }}
+    </button>
     <CustomerOrders v-if="showOrders" :user-id="u.id" class="cu__orders" />
   </article>
 </template>
@@ -100,5 +106,9 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
 .cu__more { align-self:flex-start; padding:6px 12px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:#5c4100; font-size:13px; font-weight:700; transition:background .2s; }
 .cu__more:hover { background:var(--yellow); }
 .cu__orders { flex-basis:100%; min-width:0; }
+.cu__tag.is-worker { border-color:var(--yellow); background:var(--cream); color:#7a5600; }
+.cu__role { align-self:flex-end; padding:4px 0; border:0; background:none; color:var(--muted); font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:3px; }
+.cu__role:hover:not(:disabled) { color:var(--ink); }
+.cu__role:disabled { opacity:.5; cursor:not-allowed; }
 @media (max-width:640px) { .cu { padding:12px 14px 14px 20px; } .cu__pick { flex-basis:100%; } }
 </style>

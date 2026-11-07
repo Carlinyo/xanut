@@ -5,6 +5,7 @@ import { t } from '../../i18n'
 import { commonErrorKey } from '../../api'
 import { useAdmin } from '../../stores/admin'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
+import { useConfirm } from '../../stores/confirm'
 import { perksText, ruleText, SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
 import type { AdminUser, Segment } from '../../types'
 import CustomerCard from '../molecules/CustomerCard.vue'
@@ -16,7 +17,7 @@ type Filter = 'all' | Segment
 type Sort = 'recent' | 'spent' | 'orders' | 'last'
 const PAGE = 60 // столько карточек сразу; остальные — по кнопке «Ещё»
 
-const admin = useAdmin(), authError = useAuthRedirect()
+const admin = useAdmin(), authError = useAuthRedirect(), confirm = useConfirm()
 const filter = ref<Filter>('all')
 const query = ref('')
 const sort = ref<Sort>('recent')
@@ -79,6 +80,22 @@ async function setSegment(u: AdminUser, segment: Segment | null) {
     busy.value.delete(u.id)
   }
 }
+/** Работник видит только заказы (раздел «Պատվերներ» для работников) и отмечает «Готово». */
+async function setRole(u: AdminUser, worker: boolean) {
+  const ok = await confirm.ask(worker
+    ? { icon: '🧑‍🍳', title: t('admin.customers.role.makeTitle', { name: u.name }), text: t('admin.customers.role.makeText'), yes: t('admin.customers.role.makeYes') }
+    : { icon: '↩️', title: t('admin.customers.role.undoTitle', { name: u.name }), text: t('admin.customers.role.undoText'), yes: t('admin.customers.role.undoYes'), tone: 'danger' })
+  if (!ok) return
+  busy.value.add(u.id)
+  try {
+    const r = await admin.setRole(u.id, worker ? 'worker' : 'customer')
+    say('ok', t(worker ? 'admin.customers.role.made' : 'admin.customers.role.undone', { name: r.name }))
+  } catch (e) {
+    if (!authError(e)) say('bad', `${u.name}: ${t(commonErrorKey(e))}`)
+  } finally {
+    busy.value.delete(u.id)
+  }
+}
 function saved() {
   editing.value = false
   say('ok', t('admin.segments.saved'))
@@ -127,7 +144,7 @@ function saved() {
     <template v-else-if="admin.usersLoaded">
       <p v-if="!shown.length" class="ac__empty">{{ query.trim() ? $t('admin.customers.emptySearch') : $t('admin.customers.empty') }}</p>
       <div v-else class="ac__list">
-        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" />
+        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" @role="setRole(u, $event)" />
       </div>
       <div v-if="shown.length > limit" class="ac__more">
         <AppButton variant="light" @click="limit += PAGE">{{ $t('admin.customers.more', { n: shown.length - limit }) }}</AppButton>

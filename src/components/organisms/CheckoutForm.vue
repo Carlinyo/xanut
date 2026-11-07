@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue'
 import { t } from '../../i18n'
 import { ApiError, commonErrorKey } from '../../api'
 import { useCart } from '../../stores/cart'
@@ -14,7 +14,8 @@ import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
-import { GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
+import { distanceKm, GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
+import { goToBank, paymentLabel } from '../../utils/payment'
 import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
 import SlotPicker from '../molecules/SlotPicker.vue'
@@ -23,11 +24,12 @@ import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AddressMapPicker from './AddressMapPicker.vue'
-import type { GeoPoint, PickerDay } from '../../types'
+import type { GeoPoint, PaymentMethod, PickerDay } from '../../types'
 
-const emit = defineEmits<{ done: [] }>()
+/** done: ok — заказ принят; payLater — принят, но страница оплаты банка не открылась (оплатить можно из «Իմ հաշիվը»). */
+const emit = defineEmits<{ done: [result: 'ok' | 'payLater'] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
-const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as 'cash' | 'card', comment: '' })
+const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as PaymentMethod, comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
 const geoMsg = ref('') // ошибка геолокации или подсказка «допишите адрес»
 const geoErr = ref(false) // geoMsg — ошибка (красным), а не подсказка
@@ -71,8 +73,23 @@ watch(saved, (u) => { if (!u) who.value = 'new' })
 // самовывоз из магазина: адрес не нужен и не проверяется (выбор — в корзине над итогом)
 const pickup = computed(() => cart.method === 'pickup')
 watch(pickup, () => { errors.address = '' })
-// при доставке оплата только наличными: картой можно заплатить лишь в магазине при самовывозе
-watch(pickup, (p) => { if (!p) form.payment = 'cash' })
+// Оплата: при доставке — наличными курьеру или картой онлайн (AmeriaBank); «картой в магазине» — только при самовывозе.
+// Онлайн-оплаты нет, пока магазин не получил данные банка (сервер говорит об этом в /api/config).
+const online = computed(() => catalog.config.onlinePay === true)
+const payOptions = computed<PaymentMethod[]>(() => [
+  'cash', ...(pickup.value ? ['card' as const] : []), ...(online.value ? ['online' as const] : []),
+])
+watch(payOptions, (list) => { if (!list.includes(form.payment)) form.payment = 'cash' })
+
+// Цена доставки зависит от расстояния: точка на карте — считаем сами, адрес текстом — по ответу проверки адреса
+const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSlots } = useSlots()
+const { state: addrState, formatted: addrFormatted, km: addrKm, check: checkAddr } = useAddressCheck(() => form.address)
+watchEffect(() => {
+  const z = catalog.config.zone
+  cart.deliveryKm = pickup.value ? null : form.point && z ? distanceKm(z, form.point) : addrKm.value
+})
+onUnmounted(() => { cart.deliveryKm = null })
+const farFee = computed(() => catalog.config.deliveryFar)
 // поля показываем, когда вводят новые данные; в «моих» — только адрес, если его ещё нет в аккаунте
 const showContact = computed(() => who.value === 'new')
 const showAddress = computed(() => !pickup.value && (who.value === 'new' || !savedHasAddress.value || editAddress.value))
@@ -87,8 +104,6 @@ watch(() => form.phone, () => { if (errors.phone && phoneOk.value) errors.phone 
 watch(() => form.name, () => { if (errors.name && rules.name(form.name) === true) errors.name = '' })
 watch(() => form.address, () => { errors.address = ''; geoMsg.value = '' }) // прежний результат проверки относится к старому тексту
 watch(() => form.slot, (v) => { if (v) errors.slot = '' })
-const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSlots } = useSlots()
-const { state: addrState, formatted: addrFormatted, check: checkAddr } = useAddressCheck(() => form.address)
 
 // «Моё местоположение» и «Отметить на карте»
 const zone = computed(() => catalog.config.zone)
@@ -188,9 +203,15 @@ async function fail(e: unknown) {
     errors.form = t('cart.changed')
     return
   }
-  if (code === 'VALIDATION' && err?.issues?.some((i) => i.path === 'payment')) { // картой при доставке нельзя
+  if (code === 'VALIDATION' && err?.issues?.some((i) => i.path === 'payment')) { // «картой в магазине» при доставке нельзя
+    form.payment = online.value ? 'online' : 'cash'
+    errors.form = t(online.value ? 'checkout.cardOnlineError' : 'checkout.cashOnlyError')
+    return
+  }
+  if (code === 'ONLINE_UNAVAILABLE') { // магазин выключил онлайн-оплату, пока покупатель оформлял заказ
+    await catalog.load(true)
     form.payment = 'cash'
-    errors.form = t('checkout.cashOnlyError')
+    errors.form = t('checkout.onlineUnavailable')
     return
   }
   if (code === 'VALIDATION') {
@@ -218,15 +239,19 @@ function summary(): ConfirmOptions {
     pickup.value ? { label: t('confirm.order.shop'), value: t('contact.address') }
       : { label: t('checkout.address'), value: form.address.trim() + (form.point ? ` · 📌 ${t('checkout.pointShort')}` : '') },
     { label: t(pickup.value ? 'slots.titlePickup' : 'slots.title'), value: formatSlot(form.slot, exact.value) },
-    { label: t('checkout.payment'), value: form.payment === 'cash' || !pickup.value ? t('checkout.cash') : t('checkout.cardPickup') },
+    { label: t('checkout.payment'), value: paymentLabel(form.payment, cart.method) },
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
   ]
   if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
-  if (!pickup.value) rows.push({ label: t('cart.delivery'), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
+  if (!pickup.value) rows.push({ label: t('cart.delivery') + (cart.far ? ` (${t('cart.farShort', { km: farFee.value?.overKm ?? 5 })})` : ''), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
   if (form.comment.trim()) rows.push({ label: t('checkout.comment'), value: form.comment.trim() })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
-  return { icon: '🧾', title: t('confirm.order.title'), text: t('confirm.order.text'), rows, yes: t('confirm.order.yes'), no: t('confirm.order.no') }
+  const pay = form.payment === 'online'
+  return { icon: '🧾', title: t('confirm.order.title'), text: t(pay ? 'confirm.order.textOnline' : 'confirm.order.text'), rows,
+    yes: t(pay ? 'confirm.order.yesOnline' : 'confirm.order.yes'), no: t('confirm.order.no') }
 }
+/** Открывается страница оплаты банка: форма заблокирована, пока браузер уходит на неё. */
+const redirecting = ref(false)
 
 async function submit() {
   if (busy.value) return
@@ -245,15 +270,22 @@ async function submit() {
     busy.value = false
     if (!(await confirm.ask(summary()))) return
     busy.value = true
+    const payment: PaymentMethod = !pickup.value && form.payment === 'card' ? 'cash' : form.payment
     const order = await cart.checkout({
       ...form, delivery: cart.method, address: pickup.value ? '' : form.address, point: pickup.value ? null : form.point,
-      comment: form.comment.trim() || undefined, payment: pickup.value ? form.payment : 'cash',
+      comment: form.comment.trim() || undefined, payment,
       saveProfile: who.value === 'new' ? saveProfile.value : showAddress.value, // «мои данные» с новым или исправленным адресом — запоминаем его
     }, requestId)
     if (order.user) auth.user = order.user // сервер запомнил данные (или первый адрес) — в следующий раз подставятся сами
     void bonus.load() // новые «ожидающие» баллы
+    // онлайн-оплата: заказ принят — корзину очищаем и уходим на страницу оплаты банка (оттуда банк вернёт на /payment/return)
+    if (order.payUrl && goToBank(order.payUrl)) {
+      redirecting.value = true
+      cart.clear()
+      return
+    }
     // сначала «заказ принят», потом очистка: пустая корзина убирает эту форму, и событие из убранной формы Vue уже не доставит
-    emit('done')
+    emit('done', payment === 'online' ? 'payLater' : 'ok')
     cart.clear()
   } catch (e) {
     await fail(e)
@@ -304,18 +336,22 @@ async function submit() {
       :hint="$t(exact ? 'slots.hintMeat' : 'slots.hint')" :compact="exact"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
     />
-    <FormField v-if="pickup" v-model="form.payment" as="select" :label="$t('checkout.payment')">
-      <option value="cash">{{ $t('checkout.cash') }}</option>
-      <option value="card">{{ $t('checkout.cardPickup') }}</option>
+    <small v-if="cart.far && farFee" class="co__far" role="status">🚚 {{ $t('checkout.farHint', { km: farFee.overKm, fee: money(farFee.fee) }) }}</small>
+    <FormField v-if="payOptions.length > 1" v-model="form.payment" as="select" :label="$t('checkout.payment')">
+      <option v-for="p in payOptions" :key="p" :value="p">{{ paymentLabel(p, cart.method) }}</option>
     </FormField>
     <div v-else class="co__pay">
       <span class="co__pay-label">{{ $t('checkout.payment') }}</span>
       <p class="co__pay-cash">💵 {{ $t('checkout.cash') }}<small>{{ $t('checkout.cashOnly') }}</small></p>
     </div>
+    <small v-if="form.payment === 'online'" class="co__online">🔒 {{ $t('checkout.onlineHint') }}</small>
+    <small v-else-if="!pickup && online" class="co__online">{{ $t('checkout.cardOnlineOnly') }}</small>
     <FormField v-model="form.comment" as="textarea" rows="2" maxlength="300" :label="$t('checkout.comment')" :placeholder="$t('checkout.commentPlaceholder')" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
-    <AppButton type="submit" size="lg" block :disabled="busy">{{ busy ? $t('common.sending') : $t('checkout.submit') }}</AppButton>
+    <AppButton type="submit" size="lg" block :disabled="busy || redirecting">
+      {{ redirecting ? $t('checkout.toBank') : busy ? $t('common.sending') : $t(form.payment === 'online' ? 'checkout.submitOnline' : 'checkout.submit') }}
+    </AppButton>
     <Teleport to="body">
       <Transition name="overlay">
         <AddressMapPicker
@@ -350,4 +386,6 @@ async function submit() {
 .co__pay-label { font-weight:600; }
 .co__pay-cash { display:flex; flex-direction:column; gap:2px; margin:0; padding:10px 14px; border:1.5px solid var(--line); border-radius:var(--r-md); background:var(--bg); font-weight:700; }
 .co__pay-cash small { color:var(--muted); font-size:12px; font-weight:500; }
+.co__online { margin-top:-6px; color:var(--muted); font-size:12px; line-height:1.45; }
+.co__far { margin-top:-4px; padding:8px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:12.5px; font-weight:600; line-height:1.45; }
 </style>

@@ -5,11 +5,13 @@ import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
 import { discountLabel, isSegment, SEGMENT_ICON } from '../../utils/segments'
+import { paymentLabel } from '../../utils/payment'
 import type { AdminOrder, EmailResult, KebabOptions } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
-const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string } }>()
-const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean] }>()
+// staff — раздел работников: только «Готово» (без отмены, оплаты, писем и почты покупателя)
+const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string }; staff?: boolean }>()
+const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean]; check: [] }>()
 
 const o = computed(() => props.order)
 const group = computed(() => (o.value.status === 'done' ? 'done' : o.value.status === 'cancelled' ? 'cancelled' : 'active'))
@@ -23,7 +25,10 @@ const pad = (n: number) => String(n).padStart(2, '0')
 const stamp = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}, ${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const clock = (iso: string) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
 const nf = (n: number) => n.toLocaleString('en-US')
-const payment = computed(() => (o.value.payment === 'cash' ? t('checkout.cash') : pickup.value ? t('checkout.cardPickup') : t('checkout.card')))
+const payment = computed(() => paymentLabel(o.value.payment, o.value.delivery))
+/** Онлайн-оплата: ждём банк, не прошла, оплачено; у отменённого оплаченного — деньги нужно вернуть. */
+const online = computed(() => (o.value.payment === 'online' ? o.value.pay ?? null : null))
+const refund = computed(() => group.value === 'cancelled' && online.value?.state === 'paid')
 const mapUrl = computed(() => (o.value.geo ? `https://maps.google.com/?q=${o.value.geo.lat},${o.value.geo.lon}` : `https://maps.google.com/?q=${encodeURIComponent(o.value.address)}`))
 
 /** Детали шашлыка для кухни: маринад, добавки, комментарий покупателя. */
@@ -55,8 +60,9 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       <div class="tk__id">
         <b class="tk__num">№{{ o.id }}</b>
         <span class="tk__status">{{ $t('orderStatus.' + o.status) }}</span>
-        <span v-if="unpaid" class="tk__pay is-unpaid">💳 {{ $t('payment.unpaid') }}</span>
-        <span v-else-if="o.paid && group !== 'cancelled'" class="tk__pay is-paid">✓ {{ $t('payment.paid') }}</span>
+        <span v-if="unpaid" class="tk__pay is-unpaid">💳 {{ online ? $t('payment.online.' + online.state) : $t('payment.unpaid') }}</span>
+        <span v-else-if="o.paid && group !== 'cancelled'" class="tk__pay is-paid">✓ {{ online ? $t('payment.online.paid') : $t('payment.paid') }}</span>
+        <span v-if="refund" class="tk__pay is-unpaid">↩ {{ $t('payment.online.refund') }}</span>
         <span v-if="segment && segment !== 'new'" class="tk__seg" :class="`is-${segment}`">{{ SEGMENT_ICON[segment] }} {{ $t('segments.short.' + segment) }}</span>
         <small class="tk__placed">{{ $t('admin.placed', { time: stamp(o.createdAt) }) }}</small>
       </div>
@@ -69,7 +75,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
     <div class="tk__who">
       <b class="tk__name">{{ o.name }}</b>
       <a class="tk__phone" :href="`tel:${o.phone}`">📞 {{ formatPhone(o.phone) }}</a>
-      <a v-if="o.email" class="tk__mail" :href="`mailto:${o.email}`">✉ {{ o.email }}</a>
+      <a v-if="o.email && !staff" class="tk__mail" :href="`mailto:${o.email}`">✉ {{ o.email }}</a>
       <p v-if="pickup" class="tk__where">🏪 {{ $t('cart.pickup') }}</p>
       <p v-else class="tk__where">
         🚚 {{ o.address }}
@@ -93,7 +99,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
         <span>🏷 {{ discountLabel(o.segment) }}</span><span>−{{ money(o.discount) }}</span>
       </div>
       <div v-if="!pickup" class="tk__line"><span>{{ $t('cart.delivery') }}</span><span>{{ o.deliveryFee ? money(o.deliveryFee) : $t('cart.free') }}</span></div>
-      <div class="tk__line tk__total"><span>{{ $t('cart.total') }} <small>({{ payment }})</small></span><span>{{ money(o.total) }}</span></div>
+      <div class="tk__line tk__total"><span>{{ $t('cart.total') }} <small>({{ payment }}<template v-if="online?.card"> · {{ online.card }}</template>)</small></span><span>{{ money(o.total) }}</span></div>
       <div v-if="o.bonus && (o.bonus.earned || o.bonus.spent)" class="tk__pts">
         <span v-if="o.bonus.earned" :class="{ 'is-credited': o.bonus.state === 'available' }">
           ⭐ {{ $t(o.bonus.state === 'available' ? 'admin.pointsCredited' : 'admin.pointsEarned', { n: nf(o.bonus.earned) }) }}
@@ -102,7 +108,16 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
       </div>
     </div>
 
-    <footer class="tk__act">
+    <!-- работник: только «Готово» -->
+    <footer v-if="staff" class="tk__act">
+      <AppButton v-if="group === 'active'" block size="lg" :disabled="busy" @click="emit('status', 'done')">
+        {{ busy ? $t('common.sending') : '✓ ' + $t('admin.ready') }}
+      </AppButton>
+      <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
+      <small v-if="unpaid && online" class="tk__hint">⚠ {{ $t('staff.notPaidOnline') }}</small>
+      <p v-if="result?.error" class="tk__mailres is-bad" role="alert">{{ result.error }}</p>
+    </footer>
+    <footer v-else class="tk__act">
       <template v-if="group === 'active'">
         <AppButton block size="lg" :disabled="busy" @click="emit('status', 'done')">
           {{ busy ? $t('admin.email.sending') : '✓ ' + $t('admin.ready') }}
@@ -110,9 +125,13 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
         <small class="tk__hint">{{ o.email ? $t('admin.readyHint', { email: o.email }) : $t('admin.noEmail') }}</small>
       </template>
       <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
+      <!-- онлайн-оплата: покупатель мог заплатить и закрыть страницу банка — спросить банк -->
+      <AppButton v-if="unpaid && online && online.state !== 'failed'" block variant="light" :disabled="busy" @click="emit('check')">🔄 {{ $t('admin.pay.check') }}</AppButton>
+      <small v-if="refund" class="tk__hint">{{ $t('admin.pay.refundHint') }}</small>
       <!-- оплата: после подтверждения баллы заказа сразу начисляются покупателю -->
+      <!-- вручную — и у онлайн-заказа: покупатель мог в итоге заплатить курьеру наличными -->
       <template v-if="unpaid">
-        <AppButton block :variant="group === 'done' ? 'primary' : 'light'" :disabled="busy" @click="emit('paid', true)">💳 {{ $t('admin.pay.confirm') }}</AppButton>
+        <AppButton block :variant="group === 'done' && !online ? 'primary' : 'light'" :disabled="busy" @click="emit('paid', true)">💳 {{ $t('admin.pay.confirm') }}</AppButton>
         <small v-if="points" class="tk__hint">⭐ {{ $t('admin.pay.hint', { n: nf(points) }) }}</small>
       </template>
       <button v-if="group === 'active'" type="button" class="tk__link tk__link--danger" :disabled="busy" @click="emit('status', 'cancelled')">{{ $t('admin.cancel') }}</button>

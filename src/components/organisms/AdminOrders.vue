@@ -218,7 +218,10 @@ function ask(o: AdminOrder, status: string | null): Promise<boolean> {
   ]
   if (status === 'done') return confirm.ask({ icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), rows, yes: t('admin.confirm.ready.yes'),
     text: o.email ? t('admin.readyHint', { email: o.email }) : t('admin.noEmail') })
-  if (status === 'cancelled') return confirm.ask({ icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }), text: t('admin.confirm.cancel.text'), rows,
+  // оплаченный онлайн заказ: деньги покупателю возвращают в кабинете AmeriaBank — напоминаем об этом
+  const paidOnline = o.payment === 'online' && o.pay?.state === 'paid'
+  if (status === 'cancelled') return confirm.ask({ icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }),
+    text: t(paidOnline ? 'admin.confirm.cancel.textOnline' : 'admin.confirm.cancel.text'), rows,
     yes: t('admin.confirm.cancel.yes'), tone: 'danger' })
   if (status) return confirm.ask({ icon: '↩️', title: t('admin.confirm.reopen.title', { id: o.id }), text: t('admin.confirm.reopen.text'), yes: t('admin.confirm.reopen.yes') })
   return confirm.ask({ icon: '✉️', title: t('admin.confirm.resend.title', { id: o.id }), text: t('admin.confirm.resend.text', { email: o.email ?? '' }), yes: t('admin.confirm.resend.yes') })
@@ -250,6 +253,21 @@ async function setPaid(o: AdminOrder, paid: boolean) {
     await admin.setPaid(o.id, paid)
     delete results.value[o.id]
     say('ok', !paid ? t('admin.notice.unpaid', { id: o.id }) : points ? t('admin.notice.paidPoints', { id: o.id, n: nf(points) }) : t('admin.notice.paid', { id: o.id }))
+  })
+}
+
+/** Онлайн-оплата: спросить банк (без подтверждения — это только проверка). */
+async function checkPayment(o: AdminOrder) {
+  await act(o, async () => {
+    try {
+      const updated = await admin.checkPayment(o.id)
+      delete results.value[o.id]
+      const state = updated.pay?.state ?? 'pending'
+      say(state === 'paid' ? 'ok' : 'warn', t('admin.notice.payCheck.' + state, { id: o.id }))
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'BANK_UNAVAILABLE') { say('bad', t('admin.notice.payCheck.bank', { id: o.id })); return }
+      throw e
+    }
   })
 }
 </script>
@@ -299,7 +317,7 @@ async function setPaid(o: AdminOrder, paid: boolean) {
       <TransitionGroup v-else tag="div" name="tk" class="ao__list">
         <AdminOrderCard
           v-for="o in sorted" :key="o.id" :order="o" :busy="busy.has(o.id)" :fresh="fresh.has(o.id)" :result="results[o.id]"
-          @status="setStatus(o, $event)" @resend="resend(o)" @paid="setPaid(o, $event)"
+          @status="setStatus(o, $event)" @resend="resend(o)" @paid="setPaid(o, $event)" @check="checkPayment(o)"
         />
       </TransitionGroup>
       <!-- «в процессе» и неоплаченные сервер отдаёт все сразу, «показать ещё» — только для остальных -->
