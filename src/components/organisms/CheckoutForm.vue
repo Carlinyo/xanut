@@ -20,6 +20,7 @@ import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
 import SlotPicker from '../molecules/SlotPicker.vue'
 import PrivacyNote from '../molecules/PrivacyNote.vue'
+import OrderFlow from '../molecules/OrderFlow.vue'
 import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
@@ -340,6 +341,8 @@ async function submit() {
     <small v-if="form.payment === 'online'" class="co__online">🔒 {{ $t('checkout.onlineHint') }}</small>
     <small v-else-if="!pickup && online" class="co__online">{{ $t('checkout.cardOnlineOnly') }}</small>
     <FormField v-model="form.comment" as="textarea" rows="2" maxlength="300" :label="$t('checkout.comment')" :placeholder="$t('checkout.commentPlaceholder')" />
+    <!-- как пойдёт заказ и о чём придут письма: шаг оплаты — только при оплате онлайн -->
+    <OrderFlow :online="form.payment === 'online'" :email="auth.user?.email" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
     <AppButton type="submit" size="lg" block :disabled="busy">

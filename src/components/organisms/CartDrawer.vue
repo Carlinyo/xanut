@@ -15,6 +15,7 @@ import ProductArt from '../atoms/ProductArt.vue'
 import ChoiceToggle from '../molecules/ChoiceToggle.vue'
 import AppButton from '../atoms/AppButton.vue'
 import CheckoutForm from './CheckoutForm.vue'
+import OrderFlow from '../molecules/OrderFlow.vue'
 import type { CartItem } from '../../types'
 
 const emit = defineEmits<{ close: [] }>()
@@ -90,11 +91,15 @@ const methodOptions = computed(() => [
         <p v-if="cart.pointsEarned" class="drawer__earn">{{ $t(auth.isAuth ? 'bonus.earnHint' : 'bonus.guestEarn', { n: cart.pointsEarned.toLocaleString('en-US') }) }}</p>
 
         <CheckoutForm v-if="auth.isAuth" @done="done = $event" />
-        <div v-else class="gate">
-          <p>{{ $t('cart.gate') }}</p>
-          <AppButton :to="{ path: '/login', query: { redirect: route.fullPath } }" @click="emit('close')">{{ $t('auth.login') }}</AppButton>
-          <AppButton variant="light" :to="{ path: '/register', query: { redirect: route.fullPath } }" @click="emit('close')">{{ $t('auth.registerBtn') }}</AppButton>
-        </div>
+        <template v-else>
+          <!-- гость: как пойдёт заказ (способ оплаты ещё не выбран — шаг онлайн-оплаты с пометкой «если выберете») -->
+          <OrderFlow class="drawer__flow" :online="catalog.config.onlinePay ? null : false" />
+          <div class="gate">
+            <p>{{ $t('cart.gate') }}</p>
+            <AppButton :to="{ path: '/login', query: { redirect: route.fullPath } }" @click="emit('close')">{{ $t('auth.login') }}</AppButton>
+            <AppButton variant="light" :to="{ path: '/register', query: { redirect: route.fullPath } }" @click="emit('close')">{{ $t('auth.registerBtn') }}</AppButton>
+          </div>
+        </template>
       </template>
     </div>
   </OverlayShell>
@@ -117,6 +122,7 @@ h2 { margin:0; font-size:22px; }
 .drawer__perk { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--dark); color:#e9efed; font-size:13px; line-height:1.45; }
 .drawer__perk b { color:var(--yellow); }
 .drawer__earn { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
+.drawer__flow { margin-top:16px; }
 .gate { display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:16px; border:1px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); }
 .gate p { margin:0; font-weight:600; }
 .line-enter-active, .line-leave-active, .line-move { transition:opacity .3s, transform .35s var(--ease); }
