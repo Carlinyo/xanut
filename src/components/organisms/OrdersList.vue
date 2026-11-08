@@ -6,9 +6,12 @@ import { discountLabel, markText } from '../../utils/segments'
 import { useFeedback } from '../../stores/feedback'
 import { useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
+import { useConfirm } from '../../stores/confirm'
 import { useUI } from '../../stores/ui'
-import { ApiError, commonErrorKey } from '../../api'
+import { useNow } from '../../composables/useNow'
+import { api, ApiError, commonErrorKey } from '../../api'
 import { awaitingPay, canPay, goToBank, paymentLabel, startPayment } from '../../utils/payment'
+import { awaitingAnswer, clockOf, timeLeft } from '../../utils/weigh'
 import type { Order, OrderMark, OrderReview } from '../../types'
 import ReviewForm from '../molecules/ReviewForm.vue'
 import StarRating from '../atoms/StarRating.vue'
@@ -56,6 +59,48 @@ async function pay(o: Order) {
     notes[o.id] = { text: t(key), ok: false }
   } finally { if (paying.value === o.id) paying.value = null }
 }
+
+// ---------- рыба, кролик: чек взвешивания ----------
+const confirm = useConfirm(), now = useNow()
+/** Сколько осталось подтвердить чек («12:05»); null — время вышло (сервер отменит заказ). */
+const left = (o: Order) => timeLeft(o.weigh?.expiresAt, now.value)
+const answering = ref<number | null>(null)
+/** Ответ сервера — заказ в новом виде; ошибка с заказом (вес поправили, время вышло) — тоже он. */
+function weighFailed(o: Order, e: unknown) {
+  const err = e instanceof ApiError ? e : null
+  const fresh = err?.details.order as Order | undefined
+  if (fresh) Object.assign(o, fresh)
+  const key = ({ WEIGH_CHANGED: 'weigh.changed', WEIGH_EXPIRED: 'weigh.expired', ORDER_CANCELLED: 'pay.cancelled', WEIGH_NOT_SENT: 'weigh.notSent' } as Record<string, string>)[err?.code ?? '']
+  notes[o.id] = { text: t(key ?? commonErrorKey(e)), ok: false }
+}
+/** Подтвердить чек: заказ принят; онлайн — сразу на страницу оплаты банка. sentAt — именно этот чек (вес могли поправить). */
+async function confirmWeigh(o: Order) {
+  if (answering.value) return
+  answering.value = o.id
+  delete notes[o.id]
+  try {
+    Object.assign(o, await api<Order>(`/orders/${o.id}/weigh/confirm`, { method: 'POST', body: { sentAt: o.weigh?.sentAt ?? undefined } }))
+    if (canPay(o)) { answering.value = null; await pay(o) }
+  } catch (e) {
+    weighFailed(o, e)
+  } finally { if (answering.value === o.id) answering.value = null }
+}
+/** Отказаться от заказа после взвешивания — с причиной (её увидит магазин). */
+async function rejectWeigh(o: Order) {
+  if (answering.value) return
+  const reason = await confirm.askNote({
+    icon: '⚠️', title: t('weigh.rejectTitle', { id: o.id }), text: t('weigh.rejectText'), yes: t('weigh.rejectYes'), tone: 'danger',
+    note: { label: t('weigh.rejectLabel'), placeholder: t('weigh.rejectPlaceholder'), hint: t('weigh.rejectHint'), presets: t('weigh.rejectPresets') as string[] },
+  })
+  if (reason === null) return
+  answering.value = o.id
+  delete notes[o.id]
+  try {
+    Object.assign(o, await api<Order>(`/orders/${o.id}/weigh/reject`, { method: 'POST', body: reason ? { reason } : {} }))
+  } catch (e) {
+    weighFailed(o, e)
+  } finally { if (answering.value === o.id) answering.value = null }
+}
 </script>
 
 <template>
@@ -70,7 +115,7 @@ async function pay(o: Order) {
         </span>
       </small>
       <small v-if="marks?.[o.id]" class="orders__mark" :class="`is-${marks[o.id]}`">{{ markText(marks[o.id], catalog.config.segments?.rules) }}</small>
-      <small>{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
+      <small v-if="!awaitingAnswer(o)">{{ o.items.map((i) => i.name + ' × ' + i.qty).join(', ') }}</small>
       <small v-if="o.delivery === 'pickup'">🏪 {{ $t('cart.pickup') }}</small>
       <small v-else>📍 {{ o.address }}</small>
       <small v-if="o.time">🕘 {{ formatSlot(o.time, o.exactTime) }}</small>
@@ -80,6 +125,35 @@ async function pay(o: Order) {
       <small v-if="o.shopNote" class="orders__shopnote" :class="{ 'is-cancelled': o.status === 'cancelled' }">
         🏪 <b>{{ $t('orderNote.shop') }}՝</b> {{ o.shopNote }}
       </small>
+      <!-- рыба, кролик на развес: ждём веса → чек: подтвердить (онлайн — затем оплата) или отказаться -->
+      <template v-if="o.weigh">
+        <small v-if="o.status === 'new' && o.weigh.state === 'pending'" class="orders__wait">{{ $t('weigh.pending') }}</small>
+        <div v-else-if="awaitingAnswer(o)" class="orders__receipt" role="group" :aria-label="$t('weigh.receiptTitle')">
+          <b>{{ $t('weigh.receiptTitle') }}</b>
+          <ul>
+            <li v-for="(i, n) in o.items" :key="n" :class="{ 'is-weighed': i.weigh }">
+              <span>{{ i.weigh ? '⚖️ ' : '' }}{{ i.name }}<template v-if="i.qty > 1"> × {{ i.qty }}</template></span>
+              <span>{{ money(i.unitPrice * i.qty) }}</span>
+            </li>
+            <li v-if="o.discount" class="is-disc"><span>🏷 {{ discountLabel(o.segment) }}</span><span>−{{ money(o.discount) }}</span></li>
+            <li v-if="o.delivery !== 'pickup'"><span>{{ $t('cart.delivery') }}</span><span>{{ o.deliveryFee ? money(o.deliveryFee) : $t('cart.free') }}</span></li>
+            <li class="is-total"><span>{{ $t('cart.total') }}</span><span>{{ money(o.total) }}</span></li>
+          </ul>
+          <small class="orders__until" :class="{ 'is-late': !left(o) }" role="timer">
+            ⏳ {{ left(o) && o.weigh.expiresAt ? $t('weigh.until', { time: clockOf(o.weigh.expiresAt), left: left(o) ?? '' }) : $t('weigh.timeUp') }}
+          </small>
+          <div class="orders__answer">
+            <AppButton size="sm" :disabled="answering === o.id || paying === o.id || !left(o)" @click="confirmWeigh(o)">
+              {{ $t(o.payment === 'online' ? 'weigh.confirmPay' : 'weigh.confirm') }}
+            </AppButton>
+            <AppButton size="sm" variant="light" :disabled="answering === o.id || paying === o.id" @click="rejectWeigh(o)">{{ $t('weigh.reject') }}</AppButton>
+          </div>
+        </div>
+        <small v-else-if="o.weigh.state === 'confirmed'" class="orders__weighok">{{ $t('weigh.confirmed') }}</small>
+        <small v-else-if="o.weigh.state === 'rejected'" class="orders__shopnote is-cancelled">
+          ⛔ {{ $t('weigh.rejected') }}<template v-if="o.weigh.reason"> · {{ $t('weigh.reason') }}՝ {{ o.weigh.reason }}</template>
+        </small>
+      </template>
       <div v-if="canPay(o)" class="orders__paynow" :class="{ 'is-failed': o.pay?.state === 'failed' }">
         <small>{{ $t(o.pay?.state === 'failed' ? 'pay.failedNote' : 'pay.acceptedNote') }}</small>
         <AppButton size="sm" :disabled="paying === o.id" @click="pay(o)">💳 {{ paying === o.id ? $t('pay.opening') : $t('pay.payNow') }}</AppButton>
@@ -118,6 +192,18 @@ small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
 .orders__shopnote { padding:8px 10px; border-left:3px solid var(--muted); border-radius:var(--r-sm); background:var(--bg); color:var(--ink); line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
 .orders__shopnote.is-cancelled { border-left-color:var(--red); background:#fdecea; }
+/* чек взвешивания: состав с весом, итог, обратный отсчёт и ответ покупателя */
+.orders__receipt { display:flex; flex-direction:column; gap:8px; padding:12px 14px; border:1.5px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); }
+.orders__receipt ul { margin:0; padding:0; list-style:none; font-size:13.5px; }
+.orders__receipt li { display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px dashed rgb(122 86 0 / .2); }
+.orders__receipt li span:last-child { flex:none; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.orders__receipt li.is-weighed { font-weight:700; }
+.orders__receipt li.is-disc { color:var(--green); }
+.orders__receipt li.is-total { border-bottom:0; font-size:15px; font-weight:800; }
+.orders__until { color:#7a5600; font-weight:700; }
+.orders__until.is-late { color:var(--red); }
+.orders__answer { display:flex; flex-wrap:wrap; gap:8px; }
+.orders__weighok { color:var(--green); font-weight:700; }
 .orders__pay.is-unpaid { color:var(--red); }
 .orders__pay.is-paid { color:var(--green); }
 .orders__disc { color:var(--green); font-weight:600; }

@@ -8,6 +8,7 @@ import { useConfirm } from '../../stores/confirm'
 import { formatPhone } from '../../utils/phone'
 import { money } from '../../utils/format'
 import { acceptNote, cancelNote } from '../../utils/orderNote'
+import { answerOverdue, awaitingAnswer, weighDialog, weighErrorText } from '../../utils/weigh'
 import { createTicker } from '../../utils/ticker'
 import { playChime, soundSupported, soundUnlocked, unlockSound } from '../../utils/sound'
 import type { AdminOrder, EmailResult } from '../../types'
@@ -75,6 +76,8 @@ async function load() {
 // Новый заказ подсвечивается, звучит звонок, а в фоновой вкладке число новых видно в заголовке.
 const offline = ref(false)
 let checking = false
+const WEIGH_POLL_MS = 45_000
+let lastWeighPoll = 0
 async function poll() {
   if (checking || loading.value) return
   checking = true
@@ -85,6 +88,13 @@ async function poll() {
     } else {
       const ids = await admin.checkNew()
       if (ids.length) announce(ids)
+      // рыба, кролик: ждём ответ покупателя на чек — весь список раз в WEIGH_POLL_MS (ответ сам номер заказа не меняет),
+      // а срок вышел — сразу: сервер отменит такой заказ
+      const waiting = admin.orders.some((o) => awaitingAnswer(o))
+      if (admin.orders.some((o) => answerOverdue(o)) || (waiting && Date.now() - lastWeighPoll >= WEIGH_POLL_MS)) {
+        lastWeighPoll = Date.now()
+        await admin.loadOrders()
+      }
     }
     updatedAt.value = new Date()
     offline.value = false
@@ -207,7 +217,10 @@ async function act(o: AdminOrder, run: () => Promise<void>) {
   } catch (e) {
     if (authError(e)) return
     const code = e instanceof ApiError ? e.code : ''
-    results.value[o.id] = { error: code === 'ORDER_CANCELLED' ? t('admin.errors.cancelled') : code === 'NOT_FOUND' ? t('admin.errors.notFound') : t(commonErrorKey(e)) }
+    results.value[o.id] = { error: code === 'ORDER_CANCELLED' ? t('admin.errors.cancelled') : code === 'NOT_FOUND' ? t('admin.errors.notFound') : weighErrorText(code) ?? t(commonErrorKey(e)) }
+    // вес уже не принимается (покупатель ответил) — заказ, каким он стал
+    const fresh = e instanceof ApiError ? (e.details.order as AdminOrder | undefined) : undefined
+    if (fresh) admin.put(fresh)
     say('bad', `№${o.id}: ${results.value[o.id].error}`)
     if (code === 'ORDER_CANCELLED') void load() // заказ отменили в другой вкладке — показываем, как есть на сервере
   } finally {
@@ -254,6 +267,16 @@ async function setStatus(o: AdminOrder, status: string) {
   if (r) await withEmail(o, status, () => admin.setStatus(o.id, status, r.note))
 }
 async function resend(o: AdminOrder) { if (await ask(o, null)) await withEmail(o, null, () => admin.resendEmail(o.id)) }
+/** Рыба, кролик: вес → окно с ценами и комментарием покупателю → чек ему на почту (итог письма — в карточке). */
+async function weigh(o: AdminOrder, lines: { index: number; kg: number }[]) {
+  const note = await confirm.askNote(weighDialog(o, lines))
+  if (note === null) return
+  await act(o, async () => {
+    const email = await admin.weighOrder(o.id, lines, note)
+    results.value[o.id] = { email }
+    say(email?.status === 'failed' ? 'bad' : 'ok', t('weigh.sent', { id: o.id }))
+  })
+}
 
 /** Оплата: подтвердить (баллы заказа сразу начисляются покупателю) или снять отметку, поставленную по ошибке. */
 async function setPaid(o: AdminOrder, paid: boolean) {
@@ -335,7 +358,7 @@ async function checkPayment(o: AdminOrder) {
       <TransitionGroup v-else tag="div" name="tk" class="ao__list">
         <AdminOrderCard
           v-for="o in sorted" :key="o.id" :order="o" :busy="busy.has(o.id)" :fresh="fresh.has(o.id)" :result="results[o.id]"
-          @status="setStatus(o, $event)" @resend="resend(o)" @paid="setPaid(o, $event)" @check="checkPayment(o)"
+          @status="setStatus(o, $event)" @resend="resend(o)" @paid="setPaid(o, $event)" @check="checkPayment(o)" @weigh="weigh(o, $event)"
         />
       </TransitionGroup>
       <!-- «в процессе» и неоплаченные сервер отдаёт все сразу, «показать ещё» — только для остальных -->

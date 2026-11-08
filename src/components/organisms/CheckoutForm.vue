@@ -28,7 +28,7 @@ import AddressMapPicker from './AddressMapPicker.vue'
 import type { GeoPoint, PaymentMethod, PickerDay } from '../../types'
 
 /** done: ok — заказ принят; online — принят с онлайн-оплатой: платить можно, когда магазин его примет (придёт письмо). */
-const emit = defineEmits<{ done: [result: 'ok' | 'online'] }>()
+const emit = defineEmits<{ done: [result: 'ok' | 'online' | 'weigh'] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as PaymentMethod, comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
@@ -248,8 +248,9 @@ function summary(): ConfirmOptions {
   if (form.comment.trim()) rows.push({ label: t('checkout.comment'), value: form.comment.trim() })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
   const pay = form.payment === 'online'
-  return { icon: '🧾', title: t('confirm.order.title'), text: t(pay ? 'confirm.order.textOnline' : 'confirm.order.text'), rows,
-    yes: t('confirm.order.yes'), no: t('confirm.order.no') }
+  // рыба, кролик: итог пока без их мяса — точную цену покупатель подтвердит после взвешивания
+  const text = cart.hasWeighed ? t('weigh.confirmText') : t(pay ? 'confirm.order.textOnline' : 'confirm.order.text')
+  return { icon: '🧾', title: t('confirm.order.title'), text, rows, yes: t('confirm.order.yes'), no: t('confirm.order.no') }
 }
 
 async function submit() {
@@ -279,7 +280,7 @@ async function submit() {
     void bonus.load() // новые «ожидающие» баллы
     // онлайн-оплата — не сейчас: сначала магазин примет заказ, покупателю придёт письмо, и он оплатит из «Իմ հաշիվը»
     // сначала «заказ принят», потом очистка: пустая корзина убирает эту форму, и событие из убранной формы Vue уже не доставит
-    emit('done', payment === 'online' ? 'online' : 'ok')
+    emit('done', order.weigh ? 'weigh' : payment === 'online' ? 'online' : 'ok')
     cart.clear()
   } catch (e) {
     await fail(e)

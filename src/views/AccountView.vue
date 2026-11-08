@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api'
 import { awaitingPay } from '../utils/payment'
+import { weighOpen } from '../utils/weigh'
 import { useAuth } from '../stores/auth'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
@@ -31,11 +32,12 @@ onMounted(async () => {
   }
   finally { loading.value = false }
 })
-// неоплаченный онлайн-заказ: ждём, пока магазин его примет (тогда появится «Վճարել առցանց»), и итог оплаты —
+// неоплаченный онлайн-заказ: ждём, пока магазин его примет (тогда появится «Վճարել առցանց»), и итог оплаты;
+// рыба, кролик: ждём вес (появится чек) и срок ответа на чек (без ответа сервер отменит заказ) —
 // заказы обновляются сами раз в 30 с, пока страница открыта и видна
 const POLL_MS = 30_000
 let poll: ReturnType<typeof setInterval> | undefined
-const waiting = computed(() => orders.value.some(awaitingPay))
+const waiting = computed(() => orders.value.some((o) => awaitingPay(o) || weighOpen(o)))
 async function refresh() {
   if (document.visibilityState !== 'visible') return
   try { orders.value = await api<Order[]>('/orders') } catch { /* нет сети — в следующий раз */ }

@@ -53,17 +53,19 @@ onUnmounted(() => clearTimeout(timer))
         <small class="pdp__unit">{{ $t(byWeight ? 'product.perKg' : 'product.perPc') }}</small>
         <p class="pdp__desc" :class="{ muted: !product.description }">{{ product.description || $t('product.info') }}</p>
         <p v-if="product.combo" class="pdp__combo">🎁 {{ $t('combo.long') }}</p>
+        <!-- рыба, кролик: заказывают порциями, точную цену покупатель подтвердит после взвешивания -->
+        <p v-if="product.weighed" class="pdp__combo">⚖️ {{ $t('weigh.perKgNote', { price: product.price.toLocaleString('en-US') }) }}</p>
       </template>
       <p v-else-if="product.price" class="muted">{{ $t('bonus.value', { price: money(product.price) }) }}</p>
       <template v-if="product.orderable">
         <p v-if="!available" class="pdp__display">⛔ {{ $t('stock.outLong') }}</p>
         <template v-else-if="byWeight && kebab">
           <AppButton size="lg" @click="ui.openKebab(String(product.id))">🍢 {{ $t('kebab.order') }}</AppButton>
-          <small class="pdp__unit">{{ $t('product.byWeight') }}</small>
+          <small v-if="!product.weighed" class="pdp__unit">{{ $t('product.byWeight') }}</small>
         </template>
         <template v-else-if="byWeight">
-          <AppButton size="lg" @click="ui.openMeat(product.id)">⚖️ {{ $t('meat.order') }}</AppButton>
-          <small class="pdp__unit">{{ $t('meat.hint') }}</small>
+          <AppButton size="lg" @click="ui.openMeat(product.id)">⚖️ {{ $t(product.weighed ? 'weigh.order' : 'meat.order') }}</AppButton>
+          <small v-if="!product.weighed" class="pdp__unit">{{ $t('meat.hint') }}</small>
         </template>
         <AppButton v-else size="lg" :variant="added ? 'light' : 'primary'" @click="add">
           {{ added ? '✓ ' + $t('common.added') : '🛒 ' + $t('common.add') }}

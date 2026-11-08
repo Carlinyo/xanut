@@ -18,6 +18,8 @@ export interface ProductDraft {
   art: string; image?: string; inStock: boolean; active: boolean
   /** Комбо: в «Հատուկ առաջարկներ», доставка заказа с ним бесплатна. */
   combo: boolean
+  /** На развес (порциями, цена — после взвешивания): true/false — задано вручную, null — по умолчанию (рыба и кролик). */
+  weighed?: boolean | null
 }
 /** Изменение товара: любые поля каталога и баллы; image: '' — убрать фото. */
 export type ProductPatch = Partial<ProductDraft> & { bonusPoints?: number | null }
@@ -85,6 +87,12 @@ export const useAdmin = defineStore('admin', {
     /** note — комментарий магазина покупателю (при принятии и отмене; пустой не отправляется). */
     async setStatus(id: number, status: string, note?: string): Promise<EmailResult | null> {
       const r = await api<OrderUpdate>(`/admin/orders/${id}`, { method: 'PATCH', body: { status, ...noteBody(note) }, timeout: 40_000 }) // письмо может идти до ~15 с
+      this.put(r.order)
+      return r.email
+    },
+    /** Рыба, кролик: вес позиций на развес (номер позиции и кг всех её порций) → покупателю чек; note — комментарий ему. */
+    async weighOrder(id: number, lines: { index: number; kg: number }[], note?: string): Promise<EmailResult | null> {
+      const r = await api<OrderUpdate>(`/admin/orders/${id}/weigh`, { method: 'POST', body: { lines, ...noteBody(note) }, timeout: 40_000 })
       this.put(r.order)
       return r.email
     },

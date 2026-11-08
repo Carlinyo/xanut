@@ -5,7 +5,8 @@ import { money } from '../../utils/format'
 import { uuid } from '../../utils/id'
 import { KEBAB_COMMENT_MAX, KEBAB_KG, isKebab, isValidKg, kebabPrice } from '../../utils/kebab'
 import { KIND_FILTERS, KIND_ICON, kindOf, type KindFilter } from '../../utils/kinds'
-import { MAX_QTY, useCart } from '../../stores/cart'
+import { WEIGH_DEFAULT, isValidPortions } from '../../utils/weigh'
+import { MAX_QTY, portionsName, useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
 import type { Product } from '../../types'
@@ -46,21 +47,29 @@ const firstOf = (list: MenuItem[]) => (list.find((i) => i.unit === 'kg') ?? list
 // открыли с карточки товара — сразу эта позиция, иначе первая из меню
 const form = reactive({
   item: menu.value.find((i) => i.id === ui.kebabMeat)?.id ?? firstOf(menu.value),
-  kg: 1, qty: 1, marinade: kebab.value.marinades[0] ?? '', extras: [] as string[], comment: '',
+  kg: 1, qty: 1, portions: 1, marinade: kebab.value.marinades[0] ?? '', extras: [] as string[], comment: '',
 })
 const item = computed(() => menu.value.find((i) => i.id === form.item))
 const perPiece = computed(() => item.value?.unit === 'pc')
+// рыба, кролик на развес: порции вместо веса — вес и цену мяса пришлёт работник, покупатель подтвердит чек
+const weighed = computed(() => !perPiece.value && kebab.value.meats.find((m) => m.id === form.item)?.weighed === true)
+const maxPortions = computed(() => catalog.config.weigh?.maxPortions ?? WEIGH_DEFAULT.maxPortions)
 const chosen = computed(() => kebab.value.extras.filter((e) => form.extras.includes(e.id)))
-const selection = computed(() => ({ meat: form.item, kg: form.kg, marinade: form.marinade, extras: [...form.extras], comment: form.comment.trim() || undefined }))
+const selection = computed(() => ({
+  meat: form.item, ...(weighed.value ? { portions: form.portions } : { kg: form.kg }),
+  marinade: form.marinade, extras: [...form.extras], comment: form.comment.trim() || undefined,
+}))
 const qtyOk = computed(() => Number.isInteger(form.qty) && form.qty >= 1 && form.qty <= MAX_QTY)
 // порция — та же формула, что на сервере; null — выбор неполный или вне ограничений (такой заказ сервер не примет)
+// (у рыбы и кролика — только добавки: мясо посчитают после взвешивания)
 const price = computed(() => {
   const it = item.value
   if (!it) return null
   if (it.unit === 'pc') return qtyOk.value ? it.price * form.qty : null
-  return kebabPrice(kebab.value, selection.value)
+  return kebabPrice(kebab.value, selection.value, maxPortions.value)
 })
 const kgError = computed(() => (isValidKg(form.kg) ? '' : t('kebab.weightError', { min: KEBAB_KG.min, max: KEBAB_KG.max, step: KEBAB_KG.step })))
+const portionsError = computed(() => (isValidPortions(form.portions, maxPortions.value) ? '' : t('weigh.portionsError', { max: maxPortions.value })))
 const qtyError = computed(() => (qtyOk.value ? '' : t('kebab.qtyError', { max: MAX_QTY })))
 
 function pick(k: KindFilter | null) {
@@ -77,12 +86,13 @@ function add() {
   } else {
     cart.add({
       id: 'kebab-' + uuid(),
-      name: t('kebab.itemName', { meat: it.name, kg: form.kg }),
+      name: weighed.value ? portionsName(it.name, form.portions) : t('kebab.itemName', { meat: it.name, kg: form.kg }),
       price: price.value,
       art: it.product?.art ?? 'kebab',
       image: it.product?.image,
       selection: selection.value,
       note: [form.marinade, chosen.value.map((e) => e.name).join(', '), selection.value.comment].filter(Boolean).join(' · '),
+      ...(weighed.value ? { weighed: true, perKg: it.price } : {}),
     })
   }
   emit('close')
@@ -128,8 +138,15 @@ function add() {
           <p class="kb__hint">{{ $t('kebab.pcHint') }}</p>
         </template>
         <template v-else>
+          <template v-if="weighed">
+            <FormField
+              v-model="form.portions" type="number" inputmode="numeric" min="1" :max="maxPortions" step="1"
+              :label="$t('weigh.portions')" :error="portionsError"
+            />
+            <p class="kb__combo">⚖️ {{ $t('weigh.perKgNote', { price: (item?.price ?? 0).toLocaleString('en-US') }) }}</p>
+          </template>
           <FormField
-            v-model="form.kg" type="number" inputmode="decimal" :min="KEBAB_KG.min" :max="KEBAB_KG.max" :step="KEBAB_KG.step"
+            v-else v-model="form.kg" type="number" inputmode="decimal" :min="KEBAB_KG.min" :max="KEBAB_KG.max" :step="KEBAB_KG.step"
             :label="$t('kebab.weight')" :error="kgError"
           />
           <FormField v-model="form.marinade" as="select" :label="$t('kebab.marinade')">
@@ -146,7 +163,10 @@ function add() {
           <FormField v-model="form.comment" as="textarea" rows="2" :maxlength="KEBAB_COMMENT_MAX" :label="$t('kebab.comment')" />
         </template>
 
-        <AppButton type="submit" size="lg" block :disabled="price === null">
+        <AppButton v-if="weighed" type="submit" size="lg" block :disabled="price === null">
+          {{ price ? $t('weigh.addKebabExtras', { price: money(price) }) : $t('weigh.addKebab') }}
+        </AppButton>
+        <AppButton v-else type="submit" size="lg" block :disabled="price === null">
           {{ $t('kebab.add') }} — <Transition name="num" mode="out-in"><span :key="price ?? 'none'">{{ price === null ? '—' : money(price) }}</span></Transition>
         </AppButton>
       </template>

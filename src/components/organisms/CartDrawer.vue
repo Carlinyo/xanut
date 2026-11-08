@@ -21,7 +21,8 @@ import type { CartItem } from '../../types'
 const emit = defineEmits<{ close: [] }>()
 const cart = useCart(), auth = useAuth(), route = useRoute(), catalog = useCatalog(), bonus = useBonus(), confirm = useConfirm()
 /** Заказ принят: ok — как обычно; online — онлайн-оплата: оплатить, когда магазин примет заказ (в «Իմ հաշիվը»). */
-const done = ref<'' | 'ok' | 'online'>('')
+/** Заказ принят: ok — обычный, online — оплатит после принятия, weigh — с рыбой или кроликом: ждёт взвешивания и чека. */
+const done = ref<'' | 'ok' | 'online' | 'weigh'>('')
 // дальняя доставка: подпись, пока адрес не выбран (выбран дальний — цена уже в итоге)
 const far = computed(() => catalog.config.deliveryFar)
 async function change(i: CartItem, delta: number) {
@@ -48,8 +49,8 @@ const methodOptions = computed(() => [
       </header>
 
       <p v-if="done" class="drawer__ok" role="status">
-        {{ $t(done === 'online' ? 'cart.doneOnline' : 'cart.done') }}
-        <RouterLink v-if="done === 'online'" to="/account" @click="emit('close')">{{ $t('account.mine') }} →</RouterLink>
+        {{ $t(done === 'weigh' ? 'weigh.done' : done === 'online' ? 'cart.doneOnline' : 'cart.done') }}
+        <RouterLink v-if="done === 'online' || done === 'weigh'" to="/account" @click="emit('close')">{{ $t('account.mine') }} →</RouterLink>
       </p>
       <p v-else-if="!cart.items.length" class="muted">{{ $t('cart.empty') }}</p>
 
@@ -78,8 +79,11 @@ const methodOptions = computed(() => [
             <dt>🏷 {{ discountLabel(level?.segment) }}</dt><dd class="sum__disc">−{{ money(cart.discount) }}</dd>
           </template>
           <dt>{{ $t(cart.method === 'pickup' ? 'cart.pickup' : 'cart.delivery') }}</dt><dd>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
-          <dt class="sum__total">{{ $t('cart.total') }}</dt><dd class="sum__total">{{ money(cart.total) }}</dd>
+          <dt class="sum__total">{{ $t('cart.total') }}<small v-if="cart.hasWeighed" class="sum__note"> ({{ $t('weigh.totalHint') }})</small></dt>
+          <dd class="sum__total">{{ money(cart.total) }}</dd>
         </dl>
+        <!-- рыба, кролик на развес: цену мяса посчитают после взвешивания, покупатель подтвердит чек -->
+        <p v-if="cart.hasWeighed" class="drawer__weigh">{{ $t('weigh.cartNote') }}</p>
         <p v-if="showPerks && level" class="drawer__perk">
           {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b> · {{ perksText(level.perks) }}
         </p>
@@ -122,6 +126,8 @@ h2 { margin:0; font-size:22px; }
 .drawer__perk { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--dark); color:#e9efed; font-size:13px; line-height:1.45; }
 .drawer__perk b { color:var(--yellow); }
 .drawer__earn { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }
+.drawer__weigh { margin:10px 0 0; padding:10px 12px; border-left:4px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; line-height:1.5; }
+.sum__note { color:var(--muted); font-size:12px; font-weight:500; }
 .drawer__flow { margin-top:16px; }
 .gate { display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:16px; border:1px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); }
 .gate p { margin:0; font-weight:600; }

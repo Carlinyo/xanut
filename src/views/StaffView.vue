@@ -17,6 +17,7 @@ import { createTicker } from '../utils/ticker'
 import { formatPhone } from '../utils/phone'
 import { formatSlot, money } from '../utils/format'
 import { acceptNote, cancelNote, noteBody } from '../utils/orderNote'
+import { answerOverdue, awaitingAnswer, weighDialog, weighErrorText } from '../utils/weigh'
 import { playChime, soundSupported, unlockSound } from '../utils/sound'
 import type { AdminOrder } from '../types'
 import AdminOrderCard from '../components/molecules/AdminOrderCard.vue'
@@ -46,6 +47,8 @@ const isActive = (o: AdminOrder) => o.status !== 'done' && o.status !== 'cancell
 const awaitingPay = (o: AdminOrder) => isActive(o) && o.payment === 'online' && o.paid !== true && o.pay?.state !== 'paid'
 const active = computed(() => orders.value.filter(isActive).sort((a, b) => (a.time || a.createdAt).localeCompare(b.time || b.createdAt)))
 const done = computed(() => orders.value.filter((o) => o.status === 'done'))
+/** Рыба, кролик: покупатель отказался после взвешивания или не ответил — сервер показывает такие заказы несколько часов. */
+const dropped = computed(() => orders.value.filter((o) => o.status === 'cancelled'))
 
 async function load() {
   loading.value = true
@@ -57,11 +60,13 @@ async function load() {
     const added = loaded.value ? r.orders.filter((o) => !before.has(o.id) && isActive(o)).map((o) => o.id) : []
     // покупатель только что заплатил — заказ можно начинать готовить: подсветка и звонок, как у нового
     const paid = r.orders.filter((o) => { const b = before.get(o.id); return b && awaitingPay(b) && !awaitingPay(o) && isActive(o) }).map((o) => o.id)
+    // покупатель подтвердил чек взвешивания — заказ принят: тоже подсветка и звонок
+    const agreed = r.orders.filter((o) => { const b = before.get(o.id); return b && awaitingAnswer(b) && o.weigh?.state === 'confirmed' }).map((o) => o.id)
     // шаг, нажатый только что, ещё в пути к серверу — заказ остаётся в новом статусе, а не прыгает обратно
     orders.value = r.orders.map((o) => (moving.has(o.id) && isActive(o) ? { ...o, status: moving.get(o.id)! } : o))
     loaded.value = true
     offline.value = false
-    const ring = [...added, ...paid]
+    const ring = [...added, ...paid, ...agreed]
     if (ring.length) { ring.forEach((id) => fresh.value.add(id)); playChime() }
   } catch (e) {
     if (!authError(e)) { if (loaded.value) offline.value = true; else error.value = t(commonErrorKey(e)) }
@@ -80,7 +85,9 @@ async function poll() {
     offline.value = false
     const changed = head.lastId !== seen.lastId || (head.changes ?? 0) !== seen.changes
     seen = { lastId: head.lastId, changes: head.changes ?? 0 }
-    if (changed || !loaded.value || (orders.value.some(awaitingPay) && Date.now() - lastFull >= PAY_POLL_MS)) {
+    // срок ответа на чек взвешивания вышел — весь список: сервер отменит такой заказ (сам по себе он счётчик не меняет)
+    const overdue = orders.value.some((o) => answerOverdue(o))
+    if (changed || !loaded.value || overdue || (orders.value.some(awaitingPay) && Date.now() - lastFull >= PAY_POLL_MS)) {
       lastFull = Date.now()
       await load()
     }
@@ -108,7 +115,27 @@ onUnmounted(() => {
 /** Кнопка карточки: новый статус → шаг на сервере (POST /staff/orders/:id/<шаг>). */
 type Action = 'accept' | 'start' | 'done' | 'cancel'
 const ACTION: Record<string, Action> = { confirmed: 'accept', preparing: 'start', done: 'done', cancelled: 'cancel' }
-const ERRORS: Record<string, string> = { ORDER_CANCELLED: 'admin.errors.cancelled', NOT_FOUND: 'admin.errors.notFound', NOT_PAID: 'staff.errors.notPaid' }
+const ERRORS: Record<string, string> = { ORDER_CANCELLED: 'admin.errors.cancelled', NOT_FOUND: 'admin.errors.notFound', NOT_PAID: 'staff.errors.notPaid', WEIGH_PENDING: 'weigh.errors.WEIGH_PENDING' }
+
+/** Рыба, кролик: вес → окно с позициями, ценами и комментарием покупателю → чек покупателю. */
+async function onWeigh(o: AdminOrder, lines: { index: number; kg: number }[]) {
+  const note = await confirm.askNote(weighDialog(o, lines))
+  if (note === null) return
+  busy.value.add(o.id)
+  delete results.value[o.id]
+  try {
+    const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/weigh`, { method: 'POST', body: { lines, ...noteBody(note) }, timeout: 40_000 })
+    orders.value = orders.value.map((x) => (x.id === o.id ? r.order : x))
+  } catch (e) {
+    if (authError(e)) return
+    const err = e instanceof ApiError ? e : null
+    const fresh = err?.details.order as AdminOrder | undefined // покупатель уже ответил — показываем заказ, каким он стал
+    if (fresh) orders.value = orders.value.map((x) => (x.id === o.id ? fresh : x))
+    results.value[o.id] = { error: weighErrorText(err?.code ?? '') ?? t(commonErrorKey(e)) }
+  } finally {
+    busy.value.delete(o.id)
+  }
+}
 
 /** «Ընդունել» и отмена — в окне с комментарием покупателю; «Պատրաստ է» — после подтверждения; «Սկսել պատրաստել» — сразу. */
 async function onStatus(o: AdminOrder, status: string) {
@@ -193,9 +220,16 @@ async function move(o: AdminOrder, status: string, action: Action, note?: string
       <div v-else class="staff__list">
         <AdminOrderCard
           v-for="o in active" :key="o.id" staff :order="o" :busy="busy.has(o.id)" :fresh="fresh.has(o.id)" :result="results[o.id]"
-          @status="(s) => onStatus(o, s)"
+          @status="(s) => onStatus(o, s)" @weigh="(lines) => onWeigh(o, lines)"
         />
       </div>
+      <!-- рыба, кролик: покупатель отказался после взвешивания (с причиной) или не ответил — заказ отменён -->
+      <template v-if="dropped.length">
+        <h2 class="staff__sub">{{ $t('weigh.droppedTitle') }} <span class="staff__num">{{ dropped.length }}</span></h2>
+        <div class="staff__list">
+          <AdminOrderCard v-for="o in dropped" :key="o.id" staff :order="o" />
+        </div>
+      </template>
       <template v-if="done.length">
         <h2 class="staff__sub">{{ $t('staff.done') }} <span class="staff__num">{{ done.length }}</span></h2>
         <div class="staff__list">

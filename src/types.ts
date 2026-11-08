@@ -30,15 +30,19 @@ export interface Product {
   bonusOnly?: boolean
   /** Комбо: набор по одной цене (в «Հատուկ առաջարկներ»); доставка заказа с ним бесплатна — входит в цену. */
   combo?: boolean
+  /** На развес (рыба, кролик): заказывают порциями, работник взвешивает, покупатель подтверждает цену (utils/weigh.ts). */
+  weighed?: boolean
 }
 
-export interface KebabMeat { id: string; name: string; perKg: number }
+/** weighed — на развес (рыба, кролик): порция заказывается порциями (portions), без веса. */
+export interface KebabMeat { id: string; name: string; perKg: number; weighed?: boolean }
 /** note — состав добавки (показывается под названием). */
 export interface KebabExtra { id: string; name: string; price: number; note?: string }
 /** Обязательный «Լավաշ + աման» к шашлыку: один на каждые начатые perKg кг всего шашлыка в заказе (старый сервер его не присылает). */
 export interface KebabPack { name: string; price: number; perKg: number }
 export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[]; pack?: KebabPack }
-export interface KebabSelection { meat: string; kg: number; marinade: string; extras: string[]; comment?: string }
+/** Порция шашлыка: обычное мясо — с весом kg; мясо на развес (рыба, кролик) — порциями portions, вес пришлёт работник. */
+export interface KebabSelection { meat: string; kg?: number; portions?: number; marinade: string; extras: string[]; comment?: string }
 export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number }
 /** Группа клиента: новый, постоянный, VIP. */
 export type Segment = 'new' | 'regular' | 'vip'
@@ -54,7 +58,10 @@ export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; pho
   /** Дальняя доставка: адрес дальше overKm от магазина — fee ֏ (порог бесплатной доставки на неё не действует). */
   deliveryFar?: { overKm: number; fee: number }
   /** Оплата картой на сайте (AmeriaBank) включена на сервере. */
-  onlinePay?: boolean }
+  onlinePay?: boolean
+  /** Рыба, кролик: порций в позиции, минут на подтверждение чека, пределы веса (нет у старого сервера). */
+  weigh?: WeighConfig }
+export interface WeighConfig { maxPortions: number; answerMinutes: number; minKg: number; maxKg: number }
 /** Способ оплаты: наличными, картой в магазине (самовывоз), картой на сайте (AmeriaBank). */
 export type PaymentMethod = 'cash' | 'card' | 'online'
 /** Онлайн-оплата заказа: pending — ждём банк, paid — оплачено, failed — не прошла (можно оплатить снова). */
@@ -70,6 +77,10 @@ export interface CartItem {
   name: string; price: number; art: string; image?: string; note: string; qty: number
   /** Бонусный товар: цена одной штуки в баллах (price = 0). */
   points?: number
+  /** На развес (рыба, кролик): мясо — qty порций одной позицией (price = 0), шашлык — порции в kebab.portions
+   *  (price — только добавки). Цену мяса посчитают после взвешивания; perKg — цена за кг для подписи. */
+  weighed?: boolean
+  perKg?: number
 }
 export interface PublicUser {
   id: string; name: string; email: string; phone: string; role?: string
@@ -83,9 +94,16 @@ export interface PublicUser {
  *  devCode приходит только в тестовом режиме (почта не настроена на сервере) — чтобы регистрацию можно было пройти. */
 export interface OtpChallenge { challengeId: string; channel: 'email'; destination: string; expiresIn: number; resendIn: number; devCode?: string }
 /** productId — у товаров и бонусных товаров (нет у шашлыка и у очень старых заказов); options у шашлыка — см. KebabOptions. */
-export interface OrderItem { productId?: number | null; name: string; kind?: string; unitPrice: number; qty: number; points?: number; options: unknown }
-/** Параметры порции шашлыка в заказе: названия — для кухни; meat, kg, extraIds — чтобы повторить заказ (у старых заказов их нет). */
-export interface KebabOptions { marinade?: string; extras?: string[]; comment?: string; meat?: string; kg?: number; extraIds?: string[] }
+/** weigh — позиция на развес (рыба, кролик): цена за кг, порций, вес всех порций (null — ещё не взвешено), добавки шашлыка. */
+export interface OrderItem { productId?: number | null; name: string; kind?: string; unitPrice: number; qty: number; points?: number; options: unknown; weigh?: OrderItemWeigh }
+export interface OrderItemWeigh { perKg: number; portions: number; kg: number | null; extras: number }
+/** Параметры порции шашлыка в заказе: названия — для кухни; meat, kg (или portions — на развес), extraIds — чтобы повторить
+ *  заказ (у старых заказов их нет). */
+export interface KebabOptions { marinade?: string; extras?: string[]; comment?: string; meat?: string; kg?: number; portions?: number; extraIds?: string[] }
+/** Взвешивание заказа с рыбой и кроликом: pending — ждём, пока работник взвесит; sent — чек отправлен, покупатель
+ *  подтверждает до expiresAt; confirmed — подтвердил (заказ принят); rejected — отказался (reason); expired — не ответил. */
+export type WeighState = 'pending' | 'sent' | 'confirmed' | 'rejected' | 'expired'
+export interface OrderWeigh { state: WeighState; sentAt: string | null; expiresAt: string | null; answeredAt: string | null; reason?: string }
 export type BonusState = 'pending' | 'available' | 'cancelled'
 export interface OrderBonus { earned: number; spent: number; state: BonusState; availableAt: string }
 export interface BonusEntry { orderId: number; createdAt: string; earned: number; spent: number; state: BonusState; availableAt: string }
@@ -141,6 +159,8 @@ export interface Order {
   /** Комментарий магазина покупателю: пишет админ или работник, принимая или отменяя заказ (причина отмены).
    *  У старого сервера поля нет. */
   shopNote?: string | null
+  /** Взвешивание — только у заказов с рыбой и кроликом (позиции на развес). */
+  weigh?: OrderWeigh
   /** Онлайн-оплата (payment = 'online'): итог последней попытки. */
   pay?: OrderPay
   /** Только в ответе на новый заказ с онлайн-оплатой: страница оплаты банка (нет — банк не ответил, оплатить можно позже). */
@@ -162,6 +182,9 @@ export interface AdminProduct {
   art: string; image: string | null; active: boolean; inStock: boolean; bonusPoints: number | null; bonusOnly: boolean
   /** Комбо: в «Հատուկ առաջարկներ», доставка заказа с ним бесплатна (у старого сервера поля нет). */
   combo?: boolean
+  /** На развес сейчас (с правилом по умолчанию: рыба и кролик); weighedSet — задано вручную (у старого сервера полей нет). */
+  weighed?: boolean
+  weighedSet?: boolean
   rating: number; reviews: number
 }
 /** Клиент в админке: данные аккаунта, покупки, баллы и группа (назначенная вручную или по покупкам). */

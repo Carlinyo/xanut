@@ -1,17 +1,21 @@
 <script setup lang="ts">
 // Заказ в админке — как кухонный чек: номер и время доставки крупно, состав, итог и одна главная кнопка «Готово».
-import { computed } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { t } from '../../i18n'
 import { formatSlot, money } from '../../utils/format'
 import { formatPhone } from '../../utils/phone'
 import { discountLabel, isSegment, SEGMENT_ICON } from '../../utils/segments'
 import { paymentLabel } from '../../utils/payment'
+import { WEIGH_DEFAULT, isValidWeight, parseKg, timeLeft, weighedPrice, weighOpen } from '../../utils/weigh'
+import { useCatalog } from '../../stores/catalog'
+import { useNow } from '../../composables/useNow'
 import type { AdminOrder, EmailResult, KebabOptions } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
 // staff — раздел работников: следующий шаг заказа и отмена (без оплаты, писем и почты покупателя)
+// weigh — рыба, кролик: вес всех порций каждой позиции на развес (номер позиции в заказе и кг) → чек покупателю
 const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string }; staff?: boolean }>()
-const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean]; check: [] }>()
+const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean]; check: []; weigh: [lines: { index: number; kg: number }[]] }>()
 
 const o = computed(() => props.order)
 const group = computed(() => (o.value.status === 'done' ? 'done' : o.value.status === 'cancelled' ? 'cancelled' : 'active'))
@@ -29,10 +33,14 @@ const payment = computed(() => paymentLabel(o.value.payment, o.value.delivery))
 /** Онлайн-оплата: ждём банк, не прошла, оплачено; у отменённого оплаченного — деньги нужно вернуть. */
 const online = computed(() => (o.value.payment === 'online' ? o.value.pay ?? null : null))
 const refund = computed(() => group.value === 'cancelled' && online.value?.state === 'paid')
-/** Следующий шаг заказа в работе. Каждый новый заказ сначала принимают (accept). Дальше онлайн-оплата: покупатель платит
+/** Рыба, кролик: вес ещё не прислан или покупатель ещё не ответил на чек — заказ ещё не принят. */
+const weighing = computed(() => weighOpen(o.value))
+/** Следующий шаг заказа в работе. Рыба и кролик: взвесить (weigh) → покупатель отвечает на чек (awaitAnswer) — его
+ *  подтверждение и есть «принят». Остальные заказы сначала принимают (accept). Дальше онлайн-оплата: покупатель платит
  *  (awaitPay) → начать готовить (start) → готово (ready); остальные заказы — сразу «Готово». */
-const step = computed<'accept' | 'awaitPay' | 'start' | 'ready' | null>(() => {
+const step = computed<'weigh' | 'awaitAnswer' | 'accept' | 'awaitPay' | 'start' | 'ready' | null>(() => {
   if (group.value !== 'active') return null
+  if (weighing.value) return o.value.weigh?.state === 'sent' ? 'awaitAnswer' : 'weigh'
   if (o.value.status === 'new') return 'accept'
   if (o.value.payment !== 'online') return 'ready'
   if (o.value.paid !== true && online.value?.state !== 'paid') return 'awaitPay'
@@ -63,6 +71,24 @@ const mail = computed(() => {
 const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt && !!o.value.email)
 /** Подсказка под «Ընդունել»: онлайн-заказ после принятия оплачивают, остальные — сразу готовят. */
 const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.acceptHint' : 'staff.acceptHintOffline'))
+
+// ---------- рыба, кролик: вес → чек покупателю ----------
+const catalog = useCatalog(), now = useNow()
+const cfg = computed(() => catalog.config.weigh ?? WEIGH_DEFAULT)
+/** Позиции на развес и их номера в заказе (сервер ждёт вес по номеру позиции). */
+const weighLines = computed(() => o.value.items.flatMap((i, index) => (i.weigh ? [{ i, w: i.weigh, index }] : [])))
+/** Поля веса: номер позиции → что набрано (уже присланный вес подставлен — его можно поправить). */
+const kgs = reactive<Record<number, string>>({})
+watch(() => o.value.items, (items) => items.forEach((it, i) => { if (it.weigh && kgs[i] === undefined) kgs[i] = it.weigh.kg === null ? '' : String(it.weigh.kg) }), { immediate: true })
+const kgOf = (index: number) => parseKg(kgs[index] ?? '')
+const weighReady = computed(() => weighLines.value.length > 0 && weighLines.value.every(({ index }) => isValidWeight(kgOf(index), cfg.value)))
+/** Чек отправлен: форма веса раскрывается кнопкой «Ուղղել քաշը», после новой отправки — снова свёрнута. */
+const editing = ref(false)
+watch(() => o.value.weigh?.sentAt, () => { editing.value = false })
+const left = computed(() => timeLeft(o.value.weigh?.expiresAt, now.value))
+function sendWeigh() {
+  if (weighReady.value) emit('weigh', weighLines.value.map(({ index }) => ({ index, kg: kgOf(index) })))
+}
 </script>
 
 <template>
@@ -97,15 +123,29 @@ const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.accept
     <p v-if="o.comment" class="tk__comment">💬 {{ o.comment }}</p>
     <!-- что магазин написал покупателю при принятии или отмене (у отменённого — причина) -->
     <p v-if="o.shopNote" class="tk__shopnote">🏪 <b>{{ $t('orderNote.shop') }}՝</b> {{ o.shopNote }}</p>
+    <!-- рыба, кролик: покупатель отказался после взвешивания (его причина) или не ответил вовремя -->
+    <p v-if="o.weigh?.state === 'rejected'" class="tk__shopnote tk__declined">
+      {{ $t('weigh.rejectedShop') }}<template v-if="o.weigh.reason"> — {{ $t('weigh.reason') }}՝ «{{ o.weigh.reason }}»</template>
+    </p>
+    <p v-else-if="o.weigh?.state === 'expired'" class="tk__shopnote tk__declined">{{ $t('weigh.expiredShop') }}</p>
 
     <div class="tk__items">
       <ul>
-        <li v-for="(i, n) in o.items" :key="n" :class="{ 'is-bonus': i.kind === 'bonus' }">
+        <li v-for="(i, n) in o.items" :key="n" :class="{ 'is-bonus': i.kind === 'bonus', 'is-weigh': i.weigh }">
           <span class="tk__item">
-            {{ i.kind === 'bonus' ? '🎁 ' : '' }}{{ i.name }} <span class="tk__qty">× {{ i.qty }}</span>
+            {{ i.kind === 'bonus' ? '🎁 ' : i.weigh ? '⚖️ ' : '' }}{{ i.name }} <span class="tk__qty">× {{ i.qty }}</span>
             <small v-if="details(i.options)" class="tk__opt">{{ details(i.options) }}</small>
           </span>
-          <span class="tk__sum">{{ i.kind === 'bonus' ? $t('bonus.points', { n: nf((i.points ?? 0) * i.qty) }) : money(i.unitPrice * i.qty) }}</span>
+          <span class="tk__sum">
+            {{ i.kind === 'bonus' ? $t('bonus.points', { n: nf((i.points ?? 0) * i.qty) })
+              : i.weigh && i.weigh.kg === null ? $t('kebab.perKg', { price: nf(i.weigh.perKg) }) : money(i.unitPrice * i.qty) }}
+          </span>
+          <!-- вес всех порций этой позиции: цена считается сразу, покупателю уйдёт чек -->
+          <label v-if="i.weigh && (step === 'weigh' || (step === 'awaitAnswer' && editing))" class="tk__kg">
+            <span>{{ $t('weigh.kgLabel') }}</span>
+            <input v-model="kgs[n]" inputmode="decimal" autocomplete="off" :aria-label="`${$t('weigh.kgLabel')}: ${i.name}`" :disabled="busy" />
+            <small>{{ isValidWeight(kgOf(n), cfg) ? '= ' + money(weighedPrice(i.weigh, kgOf(n))) : $t('kebab.perKg', { price: nf(i.weigh.perKg) }) }}</small>
+          </label>
         </li>
       </ul>
       <div v-if="o.discount" class="tk__line tk__disc">
@@ -118,6 +158,17 @@ const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.accept
           ⭐ {{ $t(o.bonus.state === 'available' ? 'admin.pointsCredited' : 'admin.pointsEarned', { n: nf(o.bonus.earned) }) }}
         </span>
         <span v-if="o.bonus.spent">🎁 {{ $t('admin.pointsSpent', { n: nf(o.bonus.spent) }) }}</span>
+      </div>
+      <!-- рыба, кролик: отправить вес покупателю → ждём его ответ на чек (вес можно поправить, пока он не ответил) -->
+      <div v-if="step === 'weigh' || step === 'awaitAnswer'" class="tk__weighbox">
+        <template v-if="step === 'weigh' || editing">
+          <small class="tk__hint">{{ $t('weigh.staffHint') }}</small>
+          <AppButton block size="lg" :disabled="busy || !weighReady" @click="sendWeigh">{{ busy ? $t('common.sending') : $t('weigh.send') }}</AppButton>
+        </template>
+        <template v-else>
+          <p class="tk__wait" role="timer">{{ left ? $t('weigh.awaitAnswer', { left }) : $t('weigh.timeUp') }}</p>
+          <button type="button" class="tk__link" :disabled="busy" @click="editing = true">{{ $t('weigh.resend') }}</button>
+        </template>
       </div>
     </div>
 
@@ -149,18 +200,21 @@ const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.accept
           <small v-if="step === 'accept'" class="tk__hint">{{ acceptHint }}</small>
         </template>
         <p v-else-if="step === 'awaitPay'" class="tk__wait">⏳ {{ $t('staff.awaitPay') }}</p>
-        <AppButton block :size="step === 'ready' ? 'lg' : 'md'" :variant="step === 'ready' ? 'primary' : 'light'" :disabled="busy" @click="emit('status', 'done')">
-          {{ busy ? $t('admin.email.sending') : '✓ ' + $t('admin.ready') }}
-        </AppButton>
-        <small class="tk__hint">{{ o.email ? $t('admin.readyHint', { email: o.email }) : $t('admin.noEmail') }}</small>
+        <!-- рыба, кролик: пока покупатель не подтвердил чек, заказ не принят — «Готово» нельзя (сервер ответит WEIGH_PENDING) -->
+        <template v-if="!weighing">
+          <AppButton block :size="step === 'ready' ? 'lg' : 'md'" :variant="step === 'ready' ? 'primary' : 'light'" :disabled="busy" @click="emit('status', 'done')">
+            {{ busy ? $t('admin.email.sending') : '✓ ' + $t('admin.ready') }}
+          </AppButton>
+          <small class="tk__hint">{{ o.email ? $t('admin.readyHint', { email: o.email }) : $t('admin.noEmail') }}</small>
+        </template>
       </template>
       <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
       <!-- онлайн-оплата: покупатель мог заплатить и закрыть страницу банка — спросить банк -->
-      <AppButton v-if="unpaid && online && online.state !== 'failed'" block variant="light" :disabled="busy" @click="emit('check')">🔄 {{ $t('admin.pay.check') }}</AppButton>
+      <AppButton v-if="unpaid && !weighing && online && online.state !== 'failed'" block variant="light" :disabled="busy" @click="emit('check')">🔄 {{ $t('admin.pay.check') }}</AppButton>
       <small v-if="refund" class="tk__hint">{{ $t('admin.pay.refundHint') }}</small>
       <!-- оплата: после подтверждения баллы заказа сразу начисляются покупателю -->
-      <!-- вручную — и у онлайн-заказа: покупатель мог в итоге заплатить курьеру наличными -->
-      <template v-if="unpaid">
+      <!-- вручную — и у онлайн-заказа: покупатель мог в итоге заплатить курьеру наличными (не до взвешивания: сумма ещё не та) -->
+      <template v-if="unpaid && !weighing">
         <AppButton block :variant="group === 'done' && !online ? 'primary' : 'light'" :disabled="busy" @click="emit('paid', true)">💳 {{ $t('admin.pay.confirm') }}</AppButton>
         <small v-if="points" class="tk__hint">⭐ {{ $t('admin.pay.hint', { n: nf(points) }) }}</small>
       </template>
@@ -251,6 +305,13 @@ const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.accept
 @media (max-width:640px) { .tk { grid-template-columns:1fr; grid-template-areas:'head' 'who' 'items' 'act'; padding:14px 14px 16px 20px; gap:12px; }
   .tk__when { align-items:flex-start; text-align:left; } .tk__act { flex-direction:column; align-items:stretch; } .tk__act > .btn { flex:none; width:100%; }
   .tk__hint, .tk__mailres { flex:none; } }
+.tk__declined { border-left-color:var(--red) !important; background:#fdecea !important; color:var(--red); font-weight:700; }
+.tk__items li.is-weigh { flex-wrap:wrap; }
+.tk__kg { display:flex; flex-basis:100%; align-items:center; gap:8px; margin-top:4px; font-size:13px; font-weight:600; }
+.tk__kg input { width:96px; padding:7px 10px; border:1.5px solid var(--yellow); border-radius:var(--r-sm); background:#fff; font:inherit; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; }
+.tk__kg input:focus { outline:none; box-shadow:0 0 0 4px rgb(246 178 26 / .25); }
+.tk__kg small { color:var(--muted); font-weight:700; }
+.tk__weighbox { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
 .tk__shopnote { margin:0; padding:10px 12px; border-left:4px solid var(--muted); border-radius:var(--r-md); background:var(--bg); font-size:14px; line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
 .is-cancelled .tk__shopnote { border-left-color:var(--red); }
 .tk__comment { margin:0; padding:10px 12px; border-left:4px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); font-size:14px; font-weight:600; line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }

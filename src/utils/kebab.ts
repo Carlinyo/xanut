@@ -1,4 +1,5 @@
 import type { KebabConfig, KebabSelection, Product } from '../types'
+import { WEIGH_DEFAULT, isValidPortions } from './weigh'
 
 // Ограничения веса шашлыка и мяса — те же, что в схеме заказа на сервере (merkhanut-api/src/config.ts → WEIGHT).
 export const KEBAB_KG = { min: 0.5, max: 50, step: 0.5 }
@@ -17,10 +18,11 @@ export const isKebab = (p: Pick<Product, 'kebab'>): boolean => p.kebab !== false
 export const isMeat = (p: Pick<Product, 'orderable' | 'kebab'>): boolean => p.orderable && p.kebab === false
 
 /** Цена порции — та же формула, что на сервере (merkhanut-api/src/lib/pricing.ts → priceKebab).
+ *  Рыба и кролик (meat.weighed) — порциями, без веса: сейчас только добавки, мясо посчитают после взвешивания.
  *  null — такого выбора больше нет в меню (или он нарушает ограничения), сервер его не примет. */
-export function kebabPrice(cfg: KebabConfig, sel: KebabSelection): number | null {
+export function kebabPrice(cfg: KebabConfig, sel: KebabSelection, maxPortions = WEIGH_DEFAULT.maxPortions): number | null {
   const meat = cfg.meats.find((m) => m.id === sel.meat)
-  if (!meat || !cfg.marinades.includes(sel.marinade) || !isValidKg(sel.kg)) return null
+  if (!meat || !cfg.marinades.includes(sel.marinade)) return null
   if ((sel.comment?.length ?? 0) > KEBAB_COMMENT_MAX) return null
   let extras = 0
   for (const id of new Set(sel.extras)) {
@@ -28,5 +30,7 @@ export function kebabPrice(cfg: KebabConfig, sel: KebabSelection): number | null
     if (!e) return null
     extras += e.price
   }
+  if (meat.weighed) return sel.kg === undefined && sel.portions !== undefined && isValidPortions(sel.portions, maxPortions) ? extras : null
+  if (sel.portions !== undefined || sel.kg === undefined || !isValidKg(sel.kg)) return null
   return weightPrice(meat.perKg, sel.kg) + extras
 }

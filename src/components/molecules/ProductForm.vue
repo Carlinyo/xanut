@@ -9,6 +9,7 @@ import { useConfirm } from '../../stores/confirm'
 import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import type { AdminProduct, ProductKind, ProductUnit } from '../../types'
 import { KINDS, KIND_ICON } from '../../utils/kinds'
+import { WEIGH_KINDS } from '../../utils/weigh'
 import FormField from './FormField.vue'
 import ChoiceToggle from './ChoiceToggle.vue'
 import ImagePicker from './ImagePicker.vue'
@@ -34,6 +35,11 @@ const form = reactive({
   active: p?.active ?? true,
   combo: p?.combo ?? false,
 })
+// на развес (рыба, кролик): заказывают порциями, работник взвешивает, покупатель подтверждает цену.
+// null — по умолчанию (рыба и кролик — по виду мяса или рисунку раздела, как на сервере); галочку трогали — задано вручную
+const weighedChoice = ref<boolean | null>(p?.weighedSet ? (p.weighed ?? false) : null)
+const weighedAuto = computed(() => form.unit === 'kg' && (WEIGH_KINDS.includes(form.kind) || WEIGH_KINDS.includes(category.value?.art ?? '')))
+const weighed = computed({ get: () => weighedChoice.value ?? weighedAuto.value, set: (v: boolean) => { weighedChoice.value = v } })
 const int = (v: string) => (/^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN)
 const errors = reactive({ name: '', categoryId: '', price: '', oldPrice: '', form: '' })
 // исправили поле — его ошибка больше не нужна
@@ -66,6 +72,8 @@ const draft = (): ProductDraft => ({
   name: form.name.trim(), categoryId: form.categoryId, price: int(form.price), oldPrice: form.oldPrice.trim() ? int(form.oldPrice) : null,
   unit: form.unit, description: form.description.trim(), kind: form.kind || null, art: form.art, image: form.image, inStock: form.inStock, active: form.active,
   combo: form.combo,
+  // не трогали — не отправляем: товар остаётся «по умолчанию» (например, новая рыба сама станет на развес)
+  ...(weighedChoice.value !== null ? { weighed: weighedChoice.value } : {}),
 })
 
 async function save() {
@@ -155,6 +163,10 @@ async function remove() {
       <AppToggle v-model="form.inStock"><b>{{ $t('admin.catalog.form.inStock') }}</b> — {{ $t('admin.catalog.form.inStockHint') }}</AppToggle>
       <AppToggle v-model="form.active"><b>{{ $t('admin.catalog.form.visible') }}</b> — {{ $t('admin.catalog.form.visibleHint') }}</AppToggle>
       <AppToggle v-model="form.combo"><b>🎁 {{ $t('admin.catalog.form.combo') }}</b> — {{ $t('admin.catalog.form.comboHint') }}</AppToggle>
+      <!-- на развес — только товары «за кг» -->
+      <AppToggle v-if="form.unit === 'kg'" v-model="weighed">
+        <b>⚖️ {{ $t('admin.catalog.form.weighed') }}</b> — {{ $t('admin.catalog.form.weighedHint') }}<template v-if="weighedChoice === null"> ({{ $t('admin.catalog.form.weighedAuto') }})</template>
+      </AppToggle>
     </div>
 
     <p v-if="errors.form" class="pf__err" role="alert">{{ errors.form }}</p>
