@@ -51,7 +51,9 @@ export interface Perks { discount: number; bonusPercent: number; freeDelivery: b
 /** Группа на месяц: сколько полученных заказов этого месяца нужно и от какой суммы каждый (товары без доставки). */
 export interface SegmentRules { regularOrders: number; regularMin: number; vipOrders: number; vipMin: number }
 export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
-export interface ShopConfig { deliveryFee: number; freeDeliveryFrom: number; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
+/** hours — часы работы по времени Армении: заказ на сайте можно оформить только с open:00 до close:00 (у старого сервера нет).
+ *  Порога бесплатной доставки нет: бесплатно — только VIP (segments.perks.*.freeDelivery) и заказ с комбо. */
+export interface ShopConfig { deliveryFee: number; hours?: { open: number; close: number }; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
   segments?: SegmentSettings
   /** Круг доставки вокруг магазина (нет у старого сервера). */
   zone?: DeliveryZone
@@ -228,6 +230,7 @@ export interface SlotDay { date: string; slots: { key: string; hour: number; lef
 /** Время для заказа только из мяса: с 10:00 до 22:00 с шагом 30 минут, без ограничения мест. */
 export interface TimeDay { date: string; slots: { key: string; time: string }[] }
 /** times — у старого сервера нет. */
-export interface SlotsResponse { today: string; capacity: number; days: SlotDay[]; times?: TimeDay[] }
+/** open — магазин сейчас работает (вне часов работы заказ не принимается; у старого сервера поля нет). */
+export interface SlotsResponse { today: string; capacity: number; days: SlotDay[]; times?: TimeDay[]; open?: boolean; hours?: { open: number; close: number } }
 /** День в выборе времени (SlotPicker): left не задан — мест сколько угодно. */
 export interface PickerDay { date: string; slots: { key: string; label: string; left?: number }[] }

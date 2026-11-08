@@ -8,7 +8,8 @@ import { useAuth } from '../../stores/auth'
 import { useBonus } from '../../stores/bonus'
 import { useConfirm } from '../../stores/confirm'
 import { money } from '../../utils/format'
-import { discountLabel, perksText, SEGMENT_ICON } from '../../utils/segments'
+import { discountLabel, perksText, SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
+import { useShopHours } from '../../composables/useShopHours'
 import OverlayShell from '../molecules/OverlayShell.vue'
 import CartLine from '../molecules/CartLine.vue'
 import ProductArt from '../atoms/ProductArt.vue'
@@ -29,11 +30,19 @@ async function change(i: CartItem, delta: number) {
   if (i.qty + delta <= 0 && !(await confirm.ask({ title: t('confirm.removeLine.title'), text: i.name, yes: t('confirm.removeLine.yes'), tone: 'danger' }))) return
   cart.change(i.id, delta)
 }
-// доставка курьером (+deliveryFee, бесплатно от порога) или самовывоз из магазина
+// часы работы: вне их заказ оформить нельзя (сервер проверяет то же самое) — корзина предупреждает сразу
+const shop = useShopHours()
+// доставка курьером (платно при любой сумме; бесплатно — VIP и с комбо) или самовывоз из магазина
 const method = computed({ get: () => cart.method, set: (m: DeliveryMethod) => cart.setMethod(m) })
 // группа покупателя и её акция (скидка, баллы, бесплатная доставка) — строкой под итогом
 const level = computed(() => (auth.isAuth ? bonus.level : null))
 const showPerks = computed(() => !!level.value && (level.value.segment !== 'new' || cart.discount > 0) && !!perksText(level.value.perks))
+/** Кому доставка бесплатна: группы с бесплатной доставкой в акции (по умолчанию — VIP) и заказ с комбо. */
+const freeHint = computed(() => {
+  const perks = catalog.config.segments?.perks
+  const groups = perks ? SEGMENTS.filter((s) => perks[s].freeDelivery).map((s) => t('segments.short.' + s)) : []
+  return groups.length ? t('cart.freeHint', { groups: groups.join('», «') }) : t('cart.freeHintCombo')
+})
 const methodOptions = computed(() => [
   { value: 'delivery' as DeliveryMethod, label: `${t('cart.delivery')} ${cart.deliveryPrice ? '+' + money(cart.deliveryPrice) : '· ' + t('cart.free')}`, icon: '🚚' },
   { value: 'pickup' as DeliveryMethod, label: t('cart.pickup'), icon: '🏪' },
@@ -55,6 +64,7 @@ const methodOptions = computed(() => [
       <p v-else-if="!cart.items.length" class="muted">{{ $t('cart.empty') }}</p>
 
       <template v-else>
+        <p v-if="!shop.open.value" class="drawer__closed" role="status">🕙 {{ $t('hours.closed', { from: shop.from.value, to: shop.to.value }) }}</p>
         <TransitionGroup name="line" tag="ul" class="drawer__lines">
           <CartLine v-for="i in cart.items" :key="i.id" :item="i" @change="change(i, $event)" />
           <!-- обязательный «Լավաշ + աման» к шашлыку: считается сам, убрать его нельзя -->
@@ -87,7 +97,7 @@ const methodOptions = computed(() => [
         <p v-if="showPerks && level" class="drawer__perk">
           {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b> · {{ perksText(level.perks) }}
         </p>
-        <p v-if="cart.delivery && !cart.far" class="muted">{{ $t('cart.freeFrom', { amount: catalog.config.freeDeliveryFrom.toLocaleString('en-US') }) }}</p>
+        <p v-if="cart.method === 'delivery' && cart.delivery" class="muted">🚚 {{ freeHint }}</p>
         <p v-if="cart.method === 'delivery' && cart.hasCombo" class="drawer__earn">🎁 {{ $t('combo.cart') }}</p>
         <p v-else-if="cart.method === 'delivery' && far" class="muted">
           {{ $t(cart.far ? 'cart.farApplied' : 'cart.farNote', { km: far.overKm, fee: money(far.fee) }) }}
@@ -129,6 +139,7 @@ h2 { margin:0; font-size:22px; }
 .drawer__weigh { margin:10px 0 0; padding:10px 12px; border-left:4px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; line-height:1.5; }
 .sum__note { color:var(--muted); font-size:12px; font-weight:500; }
 .drawer__flow { margin-top:16px; }
+.drawer__closed { margin:16px 0 0; padding:12px 14px; border-radius:var(--r-md); background:var(--dark); color:#fff; font-size:14px; font-weight:600; line-height:1.5; }
 .gate { display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:16px; border:1px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); }
 .gate p { margin:0; font-weight:600; }
 .line-enter-active, .line-leave-active, .line-move { transition:opacity .3s, transform .35s var(--ease); }

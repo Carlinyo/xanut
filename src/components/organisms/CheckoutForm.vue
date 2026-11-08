@@ -14,6 +14,7 @@ import { checkPhone, formatPhone } from '../../utils/phone'
 import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
+import { useShopHours } from '../../composables/useShopHours'
 import { distanceKm, GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
 import { paymentLabel } from '../../utils/payment'
 import FormField from '../molecules/FormField.vue'
@@ -84,6 +85,12 @@ watch(payOptions, (list) => { if (!list.includes(form.payment)) form.payment = '
 
 // Цена доставки зависит от расстояния: точка на карте — считаем сами, адрес текстом — по ответу проверки адреса
 const { data: slotData, loading: slotsLoading, failed: slotsFailed, load: loadSlots } = useSlots()
+// часы работы: вне их заказ не оформить — по часам (с сервера) или по ответу сервера (/api/slots, 422 SHOP_CLOSED)
+const shop = useShopHours()
+const serverClosed = ref(false)
+const closed = computed(() => !shop.open.value || slotData.value?.open === false || serverClosed.value)
+// магазин открылся, пока корзина открыта: свежие окна и снова можно заказать
+watch(shop.open, (isOpen) => { if (isOpen) { serverClosed.value = false; void loadSlots() } })
 const { state: addrState, formatted: addrFormatted, km: addrKm, check: checkAddr } = useAddressCheck(() => form.address)
 watchEffect(() => {
   const z = catalog.config.zone
@@ -191,6 +198,12 @@ async function fail(e: unknown) {
   const err = e instanceof ApiError ? e : null
   const code = err?.code ?? ''
   if (err?.status === 401) { errors.form = t('cart.needLogin'); auth.user = null; return } // сессия истекла: корзина предложит войти
+  if (code === 'SHOP_CLOSED') { // магазин закрылся, пока покупатель оформлял (или часы на устройстве спешат)
+    serverClosed.value = true
+    errors.form = t('hours.closed', { from: shop.from.value, to: shop.to.value })
+    void loadSlots()
+    return
+  }
   if (code === 'SLOT_FULL' || code === 'INVALID_SLOT') { // окно заняли или оно прошло, пока клиент оформлял
     errors.slot = t(code === 'SLOT_FULL' ? 'errors.slotFull' : 'errors.slotInvalid')
     form.slot = ''
@@ -256,6 +269,7 @@ function summary(): ConfirmOptions {
 async function submit() {
   if (busy.value) return
   errors.form = ''
+  if (closed.value) return // кнопка и так неактивна: вне часов работы заказ не принимается
   if (!validate()) return
   busy.value = true
   try {
@@ -346,9 +360,10 @@ async function submit() {
     <OrderFlow :online="form.payment === 'online'" :email="auth.user?.email" />
     <p v-if="errors.form" class="co__err" role="alert">{{ errors.form }}</p>
     <PrivacyNote />
-    <AppButton type="submit" size="lg" block :disabled="busy">
-      {{ busy ? $t('common.sending') : $t('checkout.submit') }}
+    <AppButton type="submit" size="lg" block :disabled="busy || closed">
+      {{ busy ? $t('common.sending') : closed ? '🕙 ' + $t('hours.closedButton') : $t('checkout.submit') }}
     </AppButton>
+    <small v-if="closed && shop.from.value" class="co__closed" role="status">{{ $t('hours.closedShort', { from: shop.from.value, to: shop.to.value }) }}</small>
     <Teleport to="body">
       <Transition name="overlay">
         <AddressMapPicker
@@ -362,6 +377,7 @@ async function submit() {
 
 <style scoped>
 .co { display:flex; flex-direction:column; gap:12px; margin-top:16px; }
+.co__closed { margin-top:-4px; color:var(--muted); font-size:13px; text-align:center; }
 .co__err { margin:0; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:13px; }
 .co__saved { display:flex; flex-direction:column; gap:4px; padding:12px 14px; border:1.5px solid var(--yellow-lo); border-radius:var(--r-md); background:var(--cream); font-size:14px; overflow-wrap:anywhere; animation:rise .4s var(--ease) backwards; }
 .co__saved .muted { font-size:12px; }

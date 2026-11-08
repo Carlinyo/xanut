@@ -102,11 +102,12 @@ export const useCart = defineStore('cart', {
       const far = useCatalog().config.deliveryFar
       return !!far && this.deliveryKm !== null && this.deliveryKm > far.overKm
     },
-    /** Цена с акцией — так же, как посчитает сервер. Порог бесплатной доставки — по сумме до скидки;
-     *  дальняя доставка стоит deliveryFar.fee при любой сумме (бесплатная доставка по акции группы и с комбо — и на неё). */
+    /** Цена с акцией — так же, как посчитает сервер. Доставка платная при любой сумме (дальняя — deliveryFar.fee);
+     *  бесплатно — только по акции группы (VIP) и с комбо, и на дальнюю тоже. */
     priced(): ReturnType<typeof applyPerks> {
-      const { deliveryFee, freeDeliveryFrom, deliveryFar } = useCatalog().config
-      const base = this.subtotal === 0 || this.hasCombo ? 0 : this.far && deliveryFar ? deliveryFar.fee : this.subtotal >= freeDeliveryFrom ? 0 : deliveryFee
+      const { deliveryFee, deliveryFar } = useCatalog().config
+      // порога бесплатной доставки нет: бесплатно — с комбо (здесь) и по акции группы VIP (applyPerks)
+      const base = this.subtotal === 0 || this.hasCombo ? 0 : this.far && deliveryFar ? deliveryFar.fee : deliveryFee
       return applyPerks(this.subtotal, base, this.perks)
     },
     /** Скидка по акции группы (֏). */

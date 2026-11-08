@@ -3,7 +3,7 @@ import hy from './locales/hy.json'
 
 type Params = Record<string, string | number>
 
-// t('cart.freeFrom', { amount: 10000 }) — тексты берутся из JSON, {name} подставляется из params.
+// t('cart.pack', { kg: 3 }) — тексты берутся из JSON, {name} подставляется из params.
 // Возвращает any: по ключу может прийти и строка, и массив/объект (promos, features, ...).
 export function t(key: string, params: Params = {}): any {
   const v = key.split('.').reduce<any>((o, k) => o?.[k], hy)
