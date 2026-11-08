@@ -34,7 +34,7 @@ const router = createRouter({
     { path: '/forgot', component: AuthView, props: { mode: 'reset' }, meta: { guest: true, title: 'reset.title' } },
     { path: '/account', component: AccountView, meta: { auth: true, title: 'account.mine' } },
     { path: '/admin', component: () => import('./views/AdminView.vue'), meta: { auth: true, admin: true, title: 'admin.title' } },
-    // раздел работников: только заказы и кнопка «Готово» (роль worker; администратор тоже может открыть)
+    // раздел работников: только заказы и кнопка «Готово» — только роль worker (администратор ведёт заказы в админке)
     // meta.bare — без шапки, подвала и каталога (App.vue): работнику нужно только окно заказов
     { path: '/staff', component: () => import('./views/StaffView.vue'), meta: { auth: true, staff: true, bare: true, title: 'staff.title' } },
     // сюда AmeriaBank возвращает покупателя после оплаты (адрес задаёт сервер: BackURL)
@@ -52,7 +52,7 @@ router.beforeEach(async (to) => {
   if (auth.user?.role === 'worker' && to.path !== '/staff') return '/staff'
   if (to.meta.auth && !auth.isAuth) return { path: '/login', query: { redirect: to.fullPath } }
   if (to.meta.admin && auth.user?.role !== 'admin') return '/' // админка — только для роли admin (сервер проверяет то же самое)
-  if (to.meta.staff && auth.user?.role !== 'worker' && auth.user?.role !== 'admin') return '/'
+  if (to.meta.staff && auth.user?.role !== 'worker') return auth.user?.role === 'admin' ? '/admin' : '/' // сервер проверяет то же самое
   if (to.meta.guest && auth.isAuth) return '/'
   return true
 })

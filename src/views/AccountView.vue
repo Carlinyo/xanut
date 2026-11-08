@@ -63,7 +63,7 @@ const marks = computed(() => Object.fromEntries((level.value?.marks ?? []).map((
       <div class="duo acct-top">
         <ProfileCard>
           <AppButton v-if="auth.user.role === 'admin'" variant="light" to="/admin">⚙ {{ $t('admin.title') }}</AppButton>
-          <AppButton v-if="auth.user.role === 'worker' || auth.user.role === 'admin'" variant="light" to="/staff">🧑‍🍳 {{ $t('staff.title') }}</AppButton>
+          <AppButton v-if="auth.user.role === 'worker'" variant="light" to="/staff">🧑‍🍳 {{ $t('staff.title') }}</AppButton>
           <AppButton @click="logout">{{ $t('account.logout') }}</AppButton>
         </ProfileCard>
         <RouterLink to="/bonus" class="acct-bonus">
