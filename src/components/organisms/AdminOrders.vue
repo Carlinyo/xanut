@@ -7,6 +7,7 @@ import { useAuthRedirect } from '../../composables/useAuthRedirect'
 import { useConfirm } from '../../stores/confirm'
 import { formatPhone } from '../../utils/phone'
 import { money } from '../../utils/format'
+import { acceptNote, cancelNote } from '../../utils/orderNote'
 import { createTicker } from '../../utils/ticker'
 import { playChime, soundSupported, soundUnlocked, unlockSound } from '../../utils/sound'
 import type { AdminOrder, EmailResult } from '../../types'
@@ -185,9 +186,10 @@ function say(tone: 'ok' | 'warn' | 'bad', text: string) {
   if (tone === 'ok') noticeTimer = setTimeout(() => (notice.value = null), 8000) // ошибку не прячем, пока её не закроют
 }
 onUnmounted(() => clearTimeout(noticeTimer))
-function report(id: number, status: string | null, email: EmailResult | null) {
+/** online — заказ с онлайн-оплатой: после принятия покупатель платит (уведомление говорит об этом). */
+function report(id: number, status: string | null, email: EmailResult | null, online = false) {
   const head = status === 'done' ? t('admin.notice.done', { id }) : status === 'cancelled' ? t('admin.notice.cancelled', { id })
-    : status === 'confirmed' ? t('admin.notice.accepted', { id }) : status === 'preparing' && reopened !== id ? t('admin.notice.started', { id })
+    : status === 'confirmed' ? t(online ? 'admin.notice.accepted' : 'admin.notice.acceptedOffline', { id }) : status === 'preparing' && reopened !== id ? t('admin.notice.started', { id })
     : status ? t('admin.notice.reopened', { id }) : t('admin.notice.resent', { id })
   if (!email) return say('ok', head)
   if (email.status === 'sent') return say('ok', `${status ? head + ' ' : ''}${t('admin.email.sentNow', { email: email.to ?? '' })}`)
@@ -214,36 +216,43 @@ async function act(o: AdminOrder, run: () => Promise<void>) {
 }
 /** Заказ, который возвращают из готовых в работу («preparing» из «done»), — уведомление «возвращён», а не «готовится». */
 let reopened: number | null = null
-/** Каждое действие с заказом — после подтверждения: «Готово» отправляет письмо, отмену не вернуть. status null — повтор письма. */
-function ask(o: AdminOrder, status: string | null): Promise<boolean> {
+/** Каждое действие с заказом — после подтверждения: «Готово» отправляет письмо, отмену не вернуть. status null — повтор письма.
+ *  Ответ: null — передумали; note — комментарий покупателю (только при принятии и отмене). */
+async function ask(o: AdminOrder, status: string | null): Promise<{ note?: string } | null> {
+  const yes = async (q: Promise<boolean>) => ((await q) ? {} : null)
+  const withNote = async (q: Promise<string | null>) => { const note = await q; return note === null ? null : { note } }
   const rows = [
     { label: t('confirm.order.who'), value: `${o.name}, ${formatPhone(o.phone)}` },
     { label: t('cart.total'), value: money(o.total), strong: true },
   ]
-  if (status === 'done') return confirm.ask({ icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), rows, yes: t('admin.confirm.ready.yes'),
-    text: o.email ? t('admin.readyHint', { email: o.email }) : t('admin.noEmail') })
+  if (status === 'done') return yes(confirm.ask({ icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), rows, yes: t('admin.confirm.ready.yes'),
+    text: o.email ? t('admin.readyHint', { email: o.email }) : t('admin.noEmail') }))
   // оплаченный онлайн заказ: деньги покупателю возвращают в кабинете AmeriaBank — напоминаем об этом
   const paidOnline = o.payment === 'online' && o.pay?.state === 'paid'
-  if (status === 'cancelled') return confirm.ask({ icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }),
+  if (status === 'cancelled') return withNote(confirm.askNote({ icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }),
     text: t(paidOnline ? 'admin.confirm.cancel.textOnline' : 'admin.confirm.cancel.text'), rows,
-    yes: t('admin.confirm.cancel.yes'), tone: 'danger' })
-  // онлайн-заказ: «Ընդունել» — покупателю уйдёт письмо «оплатите»; «Սկսել պատրաստել» — без вопроса
-  if (status === 'confirmed') return confirm.ask({ icon: '✅', title: t('admin.confirm.accept.title', { id: o.id }), text: t('admin.confirm.accept.text'), rows,
-    yes: t('admin.confirm.accept.yes') })
+    yes: t('admin.confirm.cancel.yes'), tone: 'danger', note: cancelNote() }))
+  // «Ընդունել» — у каждого нового заказа; онлайн-заказ после этого оплачивают (письмо «оплатите»). «Սկսել պատրաստել» — без вопроса
+  if (status === 'confirmed') return withNote(confirm.askNote({ icon: '✅', title: t('admin.confirm.accept.title', { id: o.id }),
+    text: t(o.payment === 'online' ? 'admin.confirm.accept.text' : 'admin.confirm.accept.textOffline'), rows,
+    yes: t('admin.confirm.accept.yes'), note: acceptNote() }))
   reopened = o.status === 'done' ? o.id : null
-  if (status === 'preparing' && o.status !== 'done') return Promise.resolve(true)
-  if (status) return confirm.ask({ icon: '↩️', title: t('admin.confirm.reopen.title', { id: o.id }), text: t('admin.confirm.reopen.text'), yes: t('admin.confirm.reopen.yes') })
-  return confirm.ask({ icon: '✉️', title: t('admin.confirm.resend.title', { id: o.id }), text: t('admin.confirm.resend.text', { email: o.email ?? '' }), yes: t('admin.confirm.resend.yes') })
+  if (status === 'preparing' && o.status !== 'done') return {}
+  if (status) return yes(confirm.ask({ icon: '↩️', title: t('admin.confirm.reopen.title', { id: o.id }), text: t('admin.confirm.reopen.text'), yes: t('admin.confirm.reopen.yes') }))
+  return yes(confirm.ask({ icon: '✉️', title: t('admin.confirm.resend.title', { id: o.id }), text: t('admin.confirm.resend.text', { email: o.email ?? '' }), yes: t('admin.confirm.resend.yes') }))
 }
 /** Статус или повтор письма (status null): итог письма — в карточке и в уведомлении. */
 async function withEmail(o: AdminOrder, status: string | null, run: () => Promise<EmailResult | null>) {
   await act(o, async () => {
     const email = await run()
     results.value[o.id] = { email }
-    report(o.id, status, email)
+    report(o.id, status, email, o.payment === 'online')
   })
 }
-async function setStatus(o: AdminOrder, status: string) { if (await ask(o, status)) await withEmail(o, status, () => admin.setStatus(o.id, status)) }
+async function setStatus(o: AdminOrder, status: string) {
+  const r = await ask(o, status)
+  if (r) await withEmail(o, status, () => admin.setStatus(o.id, status, r.note))
+}
 async function resend(o: AdminOrder) { if (await ask(o, null)) await withEmail(o, null, () => admin.resendEmail(o.id)) }
 
 /** Оплата: подтвердить (баллы заказа сразу начисляются покупателю) или снять отметку, поставленную по ошибке. */

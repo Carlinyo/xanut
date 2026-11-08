@@ -4,12 +4,14 @@ import { useCart } from '../../stores/cart'
 import { useUI } from '../../stores/ui'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppBadge from '../atoms/AppBadge.vue'
+import HotTag from '../atoms/HotTag.vue'
 import StarRating from '../atoms/StarRating.vue'
 import PriceTag from '../atoms/PriceTag.vue'
 import AppButton from '../atoms/AppButton.vue'
 import { flyToCart } from '../../utils/flyToCart'
 import { money } from '../../utils/format'
 import { isKebab } from '../../utils/kebab'
+import { isOffer } from '../../utils/offer'
 
 import type { Product } from '../../types'
 
@@ -22,6 +24,8 @@ const available = computed(() => props.product.inStock !== false)
 /** «За кг»: хоровац заказывают через окно шашлыка (вес, маринад, добавки), мясо — через окно выбора веса. */
 const byWeight = computed(() => props.product.unit === 'kg')
 const kebab = computed(() => isKebab(props.product))
+/** Табличка HOT — у спецпредложения в наличии (у распроданного этот угол занимает «Առկա չէ»). */
+const hot = computed(() => available.value && isOffer(props.product))
 let timer: ReturnType<typeof setTimeout> | undefined
 function add() {
   cart.add(props.product)
@@ -38,6 +42,7 @@ onUnmounted(() => clearTimeout(timer))
     <div ref="imgBox" class="pdp__img">
       <AppBadge v-if="product.discount" class="pdp__badge">-{{ product.discount }}%</AppBadge>
       <span v-if="!available" class="pdp__out">{{ $t('stock.out') }}</span>
+      <HotTag v-else-if="hot" class="pdp__hot" size="lg" />
       <ProductArt :kind="product.art" :src="product.image" :alt="product.name" />
     </div>
     <div class="pdp__info">
@@ -80,6 +85,7 @@ onUnmounted(() => clearTimeout(timer))
 .pdp__img { position:relative; width:100%; max-width:460px; aspect-ratio:1; padding:clamp(22px, 4vw, 40px); border-radius:var(--r-lg); background:radial-gradient(circle at 50% 40%, #fff, var(--bg)); animation:rise .7s var(--ease) backwards; }
 .pdp__img > :last-child { animation:float 8s ease-in-out infinite; filter:drop-shadow(0 18px 18px rgb(14 26 25 / .25)); }
 .pdp__badge { position:absolute; top:18px; left:18px; z-index:1; }
+.pdp__hot { position:absolute; top:18px; right:18px; z-index:1; }
 .pdp__out { position:absolute; top:18px; right:18px; z-index:1; padding:5px 12px; border-radius:var(--pill); background:var(--dark); color:#fff; font-size:13px; font-weight:800; }
 .pdp.is-out .pdp__img > :last-child { filter:grayscale(.6) drop-shadow(0 18px 18px rgb(14 26 25 / .2)); opacity:.75; }
 .pdp__info { display:flex; flex-direction:column; align-items:flex-start; gap:14px; animation:rise .7s .12s var(--ease) backwards; }

@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { useCatalog } from '../stores/catalog'
 import { useUI } from '../stores/ui'
 import { isKindFilter, KIND_FILTERS, KIND_ICON, kindOf, kindRank } from '../utils/kinds'
+import { isOffer } from '../utils/offer'
 import CatalogSidebar from '../components/organisms/CatalogSidebar.vue'
 import ProductGrid from '../components/organisms/ProductGrid.vue'
 import AppInput from '../components/atoms/AppInput.vue'
@@ -26,7 +27,7 @@ const title = computed(() =>
 const found = computed(() => {
   const q = ui.query.trim().toLowerCase() // «стейк » с пробелом в конце тоже должен находиться
   // «Հատուկ առաջարկներ» — комбо и товары со скидкой
-  return catalog.shopProducts.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || p.discount || p.combo) && p.name.toLowerCase().includes(q))
+  return catalog.shopProducts.filter((p) => (cat.value === null || p.categoryId === cat.value) && (!props.offersOnly || isOffer(p)) && p.name.toLowerCase().includes(q))
 })
 // хоровац: кнопки «Խոզ / Տավար / Հավ…» (вид — в адресе: ?cat=6&kind=pork) и показ по видам
 const isKebab = computed(() => !props.offersOnly && category.value?.kebab === true)

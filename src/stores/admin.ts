@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { api } from '../api'
 import { useCatalog } from './catalog'
 import { saveBase64, XLSX_MIME } from '../utils/download'
+import { noteBody } from '../utils/orderNote'
 import type { AdminCategory, AdminFeedback, AdminOrder, AdminProduct, AdminReview, AdminUser, EmailResult, ExportsOverview, ProductKind, ProductUnit, Segment, SegmentSettings } from '../types'
 
 interface OrdersPage { orders: AdminOrder[]; nextBefore: string | null; lastId: number }
@@ -81,8 +82,9 @@ export const useAdmin = defineStore('admin', {
       await this.loadOrders()
       return this.orders.filter((o) => !known.has(o.id)).map((o) => o.id)
     },
-    async setStatus(id: number, status: string): Promise<EmailResult | null> {
-      const r = await api<OrderUpdate>(`/admin/orders/${id}`, { method: 'PATCH', body: { status }, timeout: 40_000 }) // письмо может идти до ~15 с
+    /** note — комментарий магазина покупателю (при принятии и отмене; пустой не отправляется). */
+    async setStatus(id: number, status: string, note?: string): Promise<EmailResult | null> {
+      const r = await api<OrderUpdate>(`/admin/orders/${id}`, { method: 'PATCH', body: { status, ...noteBody(note) }, timeout: 40_000 }) // письмо может идти до ~15 с
       this.put(r.order)
       return r.email
     },

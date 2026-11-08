@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Раздел работников: только заказы. Заказы в работе — ближайшие по времени первыми, у каждого — одна кнопка следующего
-// шага; ниже — готовые за последние часы. Онлайн-оплата: «Ընդունել» (покупателю — письмо «оплатите») → ждём оплату →
-// «Սկսել պատրաստել» → «Պատրաստ է» (письмо «заказ готов»). Остальные заказы — сразу «Պատրաստ է».
+// шага; ниже — готовые за последние часы. Каждый новый заказ сначала «Ընդունել» (можно написать комментарий покупателю).
+// Онлайн-оплата: дальше ждём оплату (покупателю — письмо «оплатите») → «Սկսել պատրաստել» → «Պատրաստ է» (письмо «заказ готов»).
+// Остальные заказы после принятия — сразу «Պատրաստ է».
 // Новые заказы появляются сами (раз в несколько секунд спрашиваем номер последнего заказа) и звучит звонок; пока есть
 // заказы, ждущие оплату, спрашиваем весь список — так видно, что покупатель заплатил (тоже со звонком).
-// Отменить заказ, подтвердить оплату вручную — только в админке.
+// Отменить заказ в работе работник может (после подтверждения); подтвердить оплату вручную и вернуть деньги — только в админке.
 // Страница открывается без сайта вокруг (meta.bare в router.ts): ни шапки, ни подвала, каталог не грузится.
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, ApiError, commonErrorKey } from '../api'
@@ -15,6 +16,7 @@ import { useLogout } from '../composables/useLogout'
 import { createTicker } from '../utils/ticker'
 import { formatPhone } from '../utils/phone'
 import { formatSlot, money } from '../utils/format'
+import { acceptNote, cancelNote, noteBody } from '../utils/orderNote'
 import { playChime, soundSupported, unlockSound } from '../utils/sound'
 import type { AdminOrder } from '../types'
 import AdminOrderCard from '../components/molecules/AdminOrderCard.vue'
@@ -103,14 +105,36 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', onGesture, { capture: true })
 })
 
-/** Кнопка карточки: новый статус → шаг на сервере. */
-const ACTION: Record<string, 'accept' | 'start' | 'done'> = { confirmed: 'accept', preparing: 'start', done: 'done' }
+/** Кнопка карточки: новый статус → шаг на сервере (POST /staff/orders/:id/<шаг>). */
+type Action = 'accept' | 'start' | 'done' | 'cancel'
+const ACTION: Record<string, Action> = { confirmed: 'accept', preparing: 'start', done: 'done', cancelled: 'cancel' }
 const ERRORS: Record<string, string> = { ORDER_CANCELLED: 'admin.errors.cancelled', NOT_FOUND: 'admin.errors.notFound', NOT_PAID: 'staff.errors.notPaid' }
 
-/** «Պատրաստ է» — после подтверждения (покупателю уходит письмо); «Ընդունել» и «Սկսել պատրաստել» — сразу. */
+/** «Ընդունել» и отмена — в окне с комментарием покупателю; «Պատրաստ է» — после подтверждения; «Սկսել պատրաստել» — сразу. */
 async function onStatus(o: AdminOrder, status: string) {
   const action = ACTION[status]
   if (!action) return
+  const who = { label: t('confirm.order.who'), value: `${o.name}, ${formatPhone(o.phone)}` }
+  const total = { label: t('cart.total'), value: money(o.total), strong: true }
+  if (action === 'cancel') {
+    // отмену не вернуть; оплаченный онлайн заказ — деньги возвращает админ в кабинете AmeriaBank (в админке будет метка «вернуть»)
+    const paidOnline = o.payment === 'online' && o.pay?.state === 'paid'
+    const note = await confirm.askNote({
+      icon: '⚠️', title: t('admin.confirm.cancel.title', { id: o.id }), yes: t('admin.confirm.cancel.yes'), tone: 'danger',
+      text: t(paidOnline ? 'admin.confirm.cancel.textOnline' : 'admin.confirm.cancel.text'), rows: [who, total], note: cancelNote(),
+    })
+    if (note !== null) await move(o, status, action, note)
+    return
+  }
+  if (action === 'accept') {
+    const note = await confirm.askNote({
+      icon: '✅', title: t('admin.confirm.accept.title', { id: o.id }), yes: t('admin.confirm.accept.yes'),
+      text: t(o.payment === 'online' ? 'admin.confirm.accept.text' : 'admin.confirm.accept.textOffline'),
+      rows: [who, total], note: acceptNote(),
+    })
+    if (note !== null) await move(o, status, action, note)
+    return
+  }
   if (action === 'done' && !(await confirm.ask({
     icon: '✅', title: t('admin.confirm.ready.title', { id: o.id }), yes: t('admin.confirm.ready.yes'), text: t('staff.readyText'),
     rows: [
@@ -124,7 +148,7 @@ async function onStatus(o: AdminOrder, status: string) {
 
 /** Шаг сразу виден на экране — не ждём сервер (он отправляет покупателю письмо, до ~15 с): работник уже занят
  *  следующим заказом. Не получилось — заказ возвращается в прежний статус с причиной. */
-async function move(o: AdminOrder, status: string, action: 'accept' | 'start' | 'done') {
+async function move(o: AdminOrder, status: string, action: Action, note?: string) {
   busy.value.add(o.id)
   moving.set(o.id, status)
   fresh.value.delete(o.id)
@@ -132,7 +156,9 @@ async function move(o: AdminOrder, status: string, action: 'accept' | 'start' | 
   const setStatus = (s: string) => { orders.value = orders.value.map((x) => (x.id === o.id ? { ...x, status: s } : x)) }
   setStatus(status)
   try {
-    const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/${action}`, { method: 'POST', timeout: 40_000 })
+    // комментарий покупателю (принять/отменить) — в теле запроса; без него тело пустое, как раньше
+    const body = note ? noteBody(note) : undefined
+    const r = await api<{ order: AdminOrder }>(`/staff/orders/${o.id}/${action}`, { method: 'POST', body, timeout: 40_000 })
     moving.delete(o.id)
     orders.value = orders.value.map((x) => (x.id === o.id ? r.order : x))
   } catch (e) {

@@ -9,7 +9,7 @@ import { paymentLabel } from '../../utils/payment'
 import type { AdminOrder, EmailResult, KebabOptions } from '../../types'
 import AppButton from '../atoms/AppButton.vue'
 
-// staff — раздел работников: только «Готово» (без отмены, оплаты, писем и почты покупателя)
+// staff — раздел работников: следующий шаг заказа и отмена (без оплаты, писем и почты покупателя)
 const props = defineProps<{ order: AdminOrder; busy?: boolean; fresh?: boolean; result?: { email?: EmailResult | null; error?: string }; staff?: boolean }>()
 const emit = defineEmits<{ status: [status: string]; resend: []; paid: [paid: boolean]; check: [] }>()
 
@@ -29,12 +29,12 @@ const payment = computed(() => paymentLabel(o.value.payment, o.value.delivery))
 /** Онлайн-оплата: ждём банк, не прошла, оплачено; у отменённого оплаченного — деньги нужно вернуть. */
 const online = computed(() => (o.value.payment === 'online' ? o.value.pay ?? null : null))
 const refund = computed(() => group.value === 'cancelled' && online.value?.state === 'paid')
-/** Следующий шаг заказа в работе. Онлайн-оплата: принять (accept) → покупатель платит (awaitPay) → начать готовить (start)
- *  → готово (ready). У остальных заказов — сразу «Готово». */
+/** Следующий шаг заказа в работе. Каждый новый заказ сначала принимают (accept). Дальше онлайн-оплата: покупатель платит
+ *  (awaitPay) → начать готовить (start) → готово (ready); остальные заказы — сразу «Готово». */
 const step = computed<'accept' | 'awaitPay' | 'start' | 'ready' | null>(() => {
   if (group.value !== 'active') return null
-  if (o.value.payment !== 'online') return 'ready'
   if (o.value.status === 'new') return 'accept'
+  if (o.value.payment !== 'online') return 'ready'
   if (o.value.paid !== true && online.value?.state !== 'paid') return 'awaitPay'
   return o.value.status === 'confirmed' ? 'start' : 'ready'
 })
@@ -61,6 +61,8 @@ const mail = computed(() => {
   return null
 })
 const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt && !!o.value.email)
+/** Подсказка под «Ընդունել»: онлайн-заказ после принятия оплачивают, остальные — сразу готовят. */
+const acceptHint = computed(() => t(o.value.payment === 'online' ? 'staff.acceptHint' : 'staff.acceptHintOffline'))
 </script>
 
 <template>
@@ -93,6 +95,8 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
     </div>
 
     <p v-if="o.comment" class="tk__comment">💬 {{ o.comment }}</p>
+    <!-- что магазин написал покупателю при принятии или отмене (у отменённого — причина) -->
+    <p v-if="o.shopNote" class="tk__shopnote">🏪 <b>{{ $t('orderNote.shop') }}՝</b> {{ o.shopNote }}</p>
 
     <div class="tk__items">
       <ul>
@@ -121,7 +125,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
     <footer v-if="staff" class="tk__act">
       <template v-if="step === 'accept'">
         <AppButton block size="lg" :disabled="busy" @click="emit('status', 'confirmed')">{{ busy ? $t('common.sending') : '✓ ' + $t('staff.accept') }}</AppButton>
-        <small class="tk__hint">{{ $t('staff.acceptHint') }}</small>
+        <small class="tk__hint">{{ acceptHint }}</small>
       </template>
       <p v-else-if="step === 'awaitPay'" class="tk__wait">⏳ {{ $t('staff.awaitPay') }}</p>
       <AppButton v-else-if="step === 'start'" block size="lg" :disabled="busy" @click="emit('status', 'preparing')">
@@ -131,16 +135,18 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
         {{ busy ? $t('common.sending') : '✓ ' + $t('admin.ready') }}
       </AppButton>
       <p v-else-if="group === 'done'" class="tk__done">✓ {{ $t('orderStatus.done') }}</p>
+      <!-- отмена заказа в работе — после подтверждения (StaffView) -->
+      <button v-if="group === 'active'" type="button" class="tk__link tk__link--danger" :disabled="busy" @click="emit('status', 'cancelled')">{{ $t('admin.cancel') }}</button>
       <p v-if="result?.error" class="tk__mailres is-bad" role="alert">{{ result.error }}</p>
     </footer>
     <footer v-else class="tk__act">
       <template v-if="group === 'active'">
-        <!-- онлайн-заказ: сначала шаги оплаты; «Готово» админ может нажать и раньше (например, заплатили наличными) -->
+        <!-- сначала «Ընդունել» (у онлайн-заказа — и шаги оплаты); «Готово» админ может нажать и раньше (например, заплатили наличными) -->
         <template v-if="step === 'accept' || step === 'start'">
           <AppButton block size="lg" :disabled="busy" @click="emit('status', step === 'accept' ? 'confirmed' : 'preparing')">
             {{ busy ? $t('common.sending') : step === 'accept' ? '✓ ' + $t('staff.accept') : '🔥 ' + $t('staff.start') }}
           </AppButton>
-          <small v-if="step === 'accept'" class="tk__hint">{{ $t('staff.acceptHint') }}</small>
+          <small v-if="step === 'accept'" class="tk__hint">{{ acceptHint }}</small>
         </template>
         <p v-else-if="step === 'awaitPay'" class="tk__wait">⏳ {{ $t('staff.awaitPay') }}</p>
         <AppButton block :size="step === 'ready' ? 'lg' : 'md'" :variant="step === 'ready' ? 'primary' : 'light'" :disabled="busy" @click="emit('status', 'done')">
@@ -245,5 +251,7 @@ const canResend = computed(() => group.value === 'done' && !o.value.readyEmailAt
 @media (max-width:640px) { .tk { grid-template-columns:1fr; grid-template-areas:'head' 'who' 'items' 'act'; padding:14px 14px 16px 20px; gap:12px; }
   .tk__when { align-items:flex-start; text-align:left; } .tk__act { flex-direction:column; align-items:stretch; } .tk__act > .btn { flex:none; width:100%; }
   .tk__hint, .tk__mailres { flex:none; } }
+.tk__shopnote { margin:0; padding:10px 12px; border-left:4px solid var(--muted); border-radius:var(--r-md); background:var(--bg); font-size:14px; line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
+.is-cancelled .tk__shopnote { border-left-color:var(--red); }
 .tk__comment { margin:0; padding:10px 12px; border-left:4px solid var(--yellow); border-radius:var(--r-md); background:var(--cream); font-size:14px; font-weight:600; line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
 </style>

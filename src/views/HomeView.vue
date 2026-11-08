@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useCatalog } from '../stores/catalog'
+import { isOffer } from '../utils/offer'
 import { useUI } from '../stores/ui'
 import HeroBanner from '../components/organisms/HeroBanner.vue'
 import CategoryGrid from '../components/organisms/CategoryGrid.vue'
@@ -17,7 +18,7 @@ import ReviewsSection from '../components/organisms/ReviewsSection.vue'
 
 const ui = useUI(), catalog = useCatalog()
 // «Հատուկ առաջարկներ»: сначала комбо, потом товары со скидкой
-const offers = computed(() => catalog.shopProducts.filter((p) => p.combo || p.discount).sort((a, b) => Number(!a.combo) - Number(!b.combo)).slice(0, 8))
+const offers = computed(() => catalog.shopProducts.filter((p) => isOffer(p)).sort((a, b) => Number(!a.combo) - Number(!b.combo)).slice(0, 8))
 </script>
 
 <template>

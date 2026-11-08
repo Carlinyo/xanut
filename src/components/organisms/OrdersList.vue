@@ -76,6 +76,10 @@ async function pay(o: Order) {
       <small v-if="o.time">🕘 {{ formatSlot(o.time, o.exactTime) }}</small>
       <small>💳 {{ paymentLabel(o.payment, o.delivery) }}<template v-if="o.pay?.card"> · {{ o.pay.card }}</template></small>
       <small v-if="o.comment">💬 {{ o.comment }}</small>
+      <!-- комментарий магазина: при принятии заказа или причина отмены -->
+      <small v-if="o.shopNote" class="orders__shopnote" :class="{ 'is-cancelled': o.status === 'cancelled' }">
+        🏪 <b>{{ $t('orderNote.shop') }}՝</b> {{ o.shopNote }}
+      </small>
       <div v-if="canPay(o)" class="orders__paynow" :class="{ 'is-failed': o.pay?.state === 'failed' }">
         <small>{{ $t(o.pay?.state === 'failed' ? 'pay.failedNote' : 'pay.acceptedNote') }}</small>
         <AppButton size="sm" :disabled="paying === o.id" @click="pay(o)">💳 {{ paying === o.id ? $t('pay.opening') : $t('pay.payNow') }}</AppButton>
@@ -112,6 +116,8 @@ li:hover { border-color:var(--yellow); box-shadow:var(--shadow-sm); }
 .orders__top { display:flex; justify-content:space-between; gap:12px; }
 small { color:var(--muted); overflow-wrap:anywhere; }
 .orders__status { color:var(--yellow-lo); font-weight:700; }
+.orders__shopnote { padding:8px 10px; border-left:3px solid var(--muted); border-radius:var(--r-sm); background:var(--bg); color:var(--ink); line-height:1.45; overflow-wrap:anywhere; white-space:pre-line; }
+.orders__shopnote.is-cancelled { border-left-color:var(--red); background:#fdecea; }
 .orders__pay.is-unpaid { color:var(--red); }
 .orders__pay.is-paid { color:var(--green); }
 .orders__disc { color:var(--green); font-weight:600; }
