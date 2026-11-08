@@ -162,7 +162,7 @@
     {
       "icon": "🥩",
       "title": "Թարմ միս",
-      "text": ""
+      "text": "Վստահելի մատակարարներից"
     },
     {
       "icon": "🎧",
@@ -202,18 +202,20 @@
     "lead": "Մենք թարմ մսի և խորովածի խանութ ենք։ Ընտրում ենք լավագույն մսամթերքը, խորովածը պատրաստում ենք ձեր պատվերով և առաքում ենք ձեր դուռը։",
     "values": [
       {
-        "art": "lamb",
-        "image": "/img/art/gar_chalaxaj.webp",
+        "art": "steak",
+        "image": "/img/art/tavari_papuk.webp",
         "title": "Թարմ միս",
         "text": "Որակյալ և ստուգված միս՝ վստահելի մատակարարներից։"
       },
       {
         "art": "kebab",
+        "image": "/img/art/xozi_chalaxaji_xorovac.webp",
         "title": "Խորոված պատվերով",
         "text": "Ընտրեք միսը, մարինադը և քաշը՝ մենք կպատրաստենք։"
       },
       {
-        "art": "ribs",
+        "art": "kebab",
+        "image": "/img/art/qabab_tavari_xorovac.webp",
         "title": "Արագ առաքում",
         "text": "Հասցնում ենք ձեր նշած ժամին։"
       }
