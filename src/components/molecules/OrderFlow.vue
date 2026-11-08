@@ -30,7 +30,7 @@ const steps = computed(() => [
     <p class="flow__mail">
       <span aria-hidden="true">📧</span>
       <span>
-        {{ email ? $t('orderFlow.emailTo', { email }) : $t('orderFlow.email') }}
+        {{$t('orderFlow.email') }}
         <template v-if="online">{{ $t('orderFlow.emailPay') }}</template>
       </span>
     </p>
