@@ -111,6 +111,11 @@ const defs = [
   grad('gWater', [[0, '#c9ebf8'], [1, '#76b9d6']]),
   grad('gCoal', [[0, '#4b4b4b'], [1, '#141414']], true),
   grad('gBag', [[0, '#d8c39a'], [1, '#a88b58']]),
+  // хаш: глиняная миска, бульон, чеснок
+  grad('gClay', [[0, '#cf8455'], [0.55, '#9e5128'], [1, '#5c2a10']], true),
+  grad('gClayIn', [[0, '#7a3a18'], [1, '#4a200b']]),
+  grad('gBroth', [[0, '#fffaf0'], [0.6, '#efe3c8'], [1, '#d8c59c']], true),
+  grad('gGarlic', [[0, '#fffdf8'], [0.7, '#f1e6d2'], [1, '#d9c6a6']], true),
   // мясо
   material('mBeef', { seed: 5, edge: 10, bump: 0.22, veins: MEAT_VEINS, vary: { c: [0.35, 0.02, 0.04], k: 0.9, t: -0.42 }, sparkle: { c: 1.1, e: 70, a: 0.55 } }),
   material('mPork', { seed: 8, edge: 9, bump: 0.18, spec: [0.6, 20, 0.45], veins: { ...MEAT_VEINS, c: [1, 0.96, 0.93], k: 0.75 }, vary: { c: [0.7, 0.3, 0.3], k: 0.8, t: -0.38 }, sparkle: { c: 1, e: 70, a: 0.5 } }),
@@ -248,6 +253,23 @@ ${peppercorns([[150, 630], [178, 646, 8], [640, 640], [668, 628, 8]])}`,
 <g filter="url(#mSoft)"><rect x="244" y="150" width="102" height="60" rx="14" fill="#2c7fb8"/></g>
 <g filter="url(#mGlass)"><path d="M460 340h220l-26 330c-2 18-16 30-34 30H520c-18 0-32-12-34-30z" fill="url(#gGlass)"/><path d="M468 420h204l-20 250c-2 14-12 22-26 22H514c-14 0-24-8-26-22z" fill="url(#gJuice)"/></g>
 <path d="M560 300l40 160" stroke="#e9573f" stroke-width="16" stroke-linecap="round"/>`,
+  // хаш: глиняная миска с бульоном, в нём куски говяжьих ножек с косточкой; за миской — лаваш, впереди — чеснок.
+  // Сцена поднята к центру: карточка товара обрезает верх и низ квадратной картинки
+  khash: `<g transform="translate(0 -70)">${shadow(400, 704, 330, 30)}
+<g filter="url(#mSoft)"><path d="M70 470c40-150 150-230 250-250 40 60 20 170-40 250z" fill="url(#gLavash)"/></g>
+<g filter="url(#mSoft)"><path d="M120 420c8 170 120 268 280 268s272-98 280-268z" fill="url(#gClay)"/></g>
+<g filter="url(#mSoft)"><ellipse cx="400" cy="420" rx="282" ry="78" fill="url(#gClay)"/></g>
+<ellipse cx="400" cy="424" rx="250" ry="62" fill="url(#gClayIn)"/>
+<g filter="url(#mGlass)"><ellipse cx="400" cy="432" rx="244" ry="56" fill="url(#gBroth)"/></g>
+<g filter="url(#mBone)"><path d="M322 418L344 350" stroke="url(#gBone)" stroke-width="34" stroke-linecap="round"/><circle cx="330" cy="338" r="23" fill="url(#gBone)"/><circle cx="360" cy="346" r="21" fill="url(#gBone)"/></g>
+<g filter="url(#mFat)"><path d="M196 450c10-42 46-64 86-62 30 2 46 18 66 14 24-6 42 8 40 34-2 14-8 22-14 28-60 14-122 12-178-14z" fill="url(#gRind)"/></g>
+<g filter="url(#mFat)"><path d="M408 458c-2-40 26-72 68-76 22-2 34 10 54 6 30-6 60 16 60 48 0 8-2 16-6 24-60 18-118 18-176-2z" fill="url(#gFat)"/></g>
+<g filter="url(#mBone)"><path d="M500 404c16-34 48-52 74-44 20 6 20 30 4 46-14 12-36 16-54 22z" fill="url(#gBone)"/></g>
+<g filter="url(#mHerb)" fill="url(#gHerb)">${[[262, 474, 20], [380, 478, -30], [470, 476, 50], [566, 462, -10], [612, 446, 70]].map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="11" ry="4.5" transform="rotate(${r} ${x} ${y})"/>`).join('')}</g>
+<g filter="url(#mOnion)"><path d="M652 552c-8 22-62 44-66 96-3 40 30 64 66 64s69-24 66-64c-4-52-58-74-66-96z" fill="url(#gGarlic)"/>
+<path d="M652 566c-16 30-30 80-26 142M652 566c0 40 0 100 0 146M652 566c16 30 30 80 26 142" stroke="#cdb894" stroke-width="5" fill="none" stroke-linecap="round"/>
+<rect x="644" y="530" width="16" height="34" rx="7" fill="#d9c6a6"/>
+<path d="M560 700c-6-30 8-56 34-60 8 22 6 50-8 66-10 4-20 2-26-6z" fill="url(#gGarlic)"/></g></g>`,
   grill: `${shadow(400, 702, 330, 30)}
 <g filter="url(#mSoft)"><path d="M120 300h300l-20 380H140z" fill="url(#gBag)"/><rect x="160" y="400" width="220" height="110" rx="10" fill="#1c1c1c" opacity=".85"/></g>
 <g filter="url(#mCoal)">${[[230, 290, 56], [310, 270, 48], [380, 300, 40], [270, 230, 36]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#gCoal)"/>`).join('')}</g>

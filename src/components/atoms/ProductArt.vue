@@ -1,20 +1,28 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { artUrl } from '../../utils/art'
+import { artUrl, thumbUrl } from '../../utils/art'
 
 // Изображения товаров лежат в public/img/art (см. utils/art.ts).
 // Свою фотографию товара можно передать через src, например "/img/lamb-rack.jpg".
-const props = withDefaults(defineProps<{ kind?: string; src?: string; alt?: string }>(), { alt: '' })
-const file = computed(() => props.src || artUrl(props.kind))
+// Картинка в карточке, корзине или окне — не больше ~200 px, поэтому берётся маленькая копия (до 400 px, в 5 раз легче);
+// full — полное фото (страница товара). Копии нет (фото добавили, а tools/shrink-photos.mjs не запускали) — полное фото.
+const props = withDefaults(defineProps<{ kind?: string; src?: string; alt?: string; full?: boolean }>(), { alt: '' })
+const original = computed(() => props.src || artUrl(props.kind))
+const noThumb = ref(false)
+const file = computed(() => (props.full || noThumb.value ? original.value : thumbUrl(original.value) ?? original.value))
 
 // картинка проявляется из размытия, когда загрузилась (из кэша — сразу)
 const img = ref<HTMLImageElement | null>(null)
 const loaded = ref(false)
 onMounted(() => { if (img.value?.complete) loaded.value = true })
+function failed() {
+  if (file.value !== original.value) noThumb.value = true // копии нет — полное фото
+  else loaded.value = true
+}
 </script>
 
 <template>
-  <img ref="img" :src="file" :alt="alt" class="photo" :class="{ loaded }" width="800" height="800" loading="lazy" decoding="async" @load="loaded = true" @error="loaded = true" />
+  <img ref="img" :src="file" :alt="alt" class="photo" :class="{ loaded }" width="800" height="800" loading="lazy" decoding="async" @load="loaded = true" @error="failed" />
 </template>
 
 <style scoped>

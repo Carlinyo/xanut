@@ -43,7 +43,7 @@ onUnmounted(() => clearTimeout(timer))
       <AppBadge v-if="product.discount" class="pdp__badge">-{{ product.discount }}%</AppBadge>
       <span v-if="!available" class="pdp__out">{{ $t('stock.out') }}</span>
       <HotTag v-else-if="hot" class="pdp__hot" size="lg" />
-      <ProductArt :kind="product.art" :src="product.image" :alt="product.name" />
+      <ProductArt :kind="product.art" :src="product.image" :alt="product.name" full />
     </div>
     <div class="pdp__info">
       <h1>{{ product.name }}</h1>

@@ -17,8 +17,9 @@ import BonusTeaser from '../components/molecules/BonusTeaser.vue'
 import ReviewsSection from '../components/organisms/ReviewsSection.vue'
 
 const ui = useUI(), catalog = useCatalog()
-// «Հատուկ առաջարկներ»: сначала комбо, потом товары со скидкой
-const offers = computed(() => catalog.shopProducts.filter((p) => isOffer(p)).sort((a, b) => Number(!a.combo) - Number(!b.combo)).slice(0, 8))
+// «Հատուկ առաջարկներ»: сначала комбо, потом товары со скидкой; 5 — ровно один ряд сетки на компьютере
+// (на телефоне это лента с прокруткой), остальное — по ссылке «Բոլորը»
+const offers = computed(() => catalog.shopProducts.filter((p) => isOffer(p)).sort((a, b) => Number(!a.combo) - Number(!b.combo)).slice(0, 5))
 </script>
 
 <template>

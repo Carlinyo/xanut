@@ -39,7 +39,11 @@ onUnmounted(() => clearTimeout(timer))
 <template>
   <article v-tilt class="card" :class="{ 'card--display': !product.orderable, 'card--out': !available }">
     <span class="card__glare" aria-hidden="true" />
-    <AppBadge v-if="product.discount" class="card__badge">-{{ product.discount }}%</AppBadge>
+    <!-- слева на фото: скидка и «Կոմբո» (столбиком, если есть обе) -->
+    <span v-if="product.discount || product.combo" class="card__badges">
+      <AppBadge v-if="product.discount">-{{ product.discount }}%</AppBadge>
+      <span v-if="product.combo" class="card__combo">🎁 {{ $t('combo.tag') }}</span>
+    </span>
     <span v-if="!available" class="card__out">{{ $t('stock.out') }}</span>
     <HotTag v-else-if="hot" class="card__hot" />
     <RouterLink class="card__img" :to="`/products/${product.id}`" :aria-label="product.name">
@@ -49,7 +53,7 @@ onUnmounted(() => clearTimeout(timer))
     </RouterLink>
     <h3 class="card__title"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <PriceTag :price="product.price" :old="product.old" :unit="product.unit" />
-    <span v-if="product.combo" class="card__combo">🎁 {{ $t('combo.tag') }} · {{ $t('combo.free') }}</span>
+    <span v-if="product.combo" class="card__free">🚚 {{ $t('combo.free') }}</span>
     <RouterLink v-if="product.bonusPoints" to="/bonus" class="card__bonus">{{ $t('bonus.orPoints', { n: product.bonusPoints.toLocaleString('en-US') }) }}</RouterLink>
     <StarRating v-if="product.reviews" :value="product.rating" :count="product.reviews" />
     <template v-if="product.orderable">
@@ -57,7 +61,9 @@ onUnmounted(() => clearTimeout(timer))
       <AppButton v-else-if="byWeight && kebab" block size="sm" @click="ui.openKebab(String(product.id))">🍢 {{ $t('kebab.order') }}</AppButton>
       <AppButton v-else-if="byWeight" block size="sm" @click="ui.openMeat(product.id)">⚖️ {{ $t('meat.order') }}</AppButton>
       <AppButton v-else block size="sm" :variant="added ? 'light' : 'primary'" @click="add">
-        {{ added ? '✓ ' + $t('common.added') : '🛒 ' + $t('common.add') }}
+        <template v-if="added">✓ {{ $t('common.added') }}</template>
+        <!-- на телефоне карточка узкая: короткая подпись, чтобы кнопка была в одну строку -->
+        <template v-else>🛒 <span class="card__lbl">{{ $t('common.add') }}</span><span class="card__lbl card__lbl--short">{{ $t('common.addShort') }}</span></template>
       </AppButton>
     </template>
     <AppButton v-else-if="product.bonusPoints" block size="sm" variant="light" to="/bonus">🎁 {{ $t('bonus.getWithPoints') }}</AppButton>
@@ -67,7 +73,7 @@ onUnmounted(() => clearTimeout(timer))
 
 <style scoped>
 .card { position:relative; display:flex; flex-direction:column; gap:8px; padding:12px; background:#fff; border:1px solid var(--line); border-radius:var(--r-lg); transition:transform var(--t) var(--ease), box-shadow var(--t), border-color var(--t); }
-.card__badge { position:absolute; top:20px; left:20px; z-index:1; }
+.card__badges { position:absolute; top:20px; left:20px; z-index:1; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
 .card__hot { position:absolute; top:20px; right:20px; z-index:1; }
 .card__out { position:absolute; top:20px; right:20px; z-index:1; padding:3px 9px; border-radius:var(--pill); background:var(--dark); color:#fff; font-size:11.5px; font-weight:800; }
 .card__img { position:relative; display:grid; place-items:center; height:clamp(104px, 12vw, 140px); padding:10px; border-radius:var(--r-md); background:radial-gradient(circle at 50% 38%, #fff, var(--bg)); overflow:hidden; }
@@ -78,7 +84,9 @@ onUnmounted(() => clearTimeout(timer))
 .card .btn { margin-top:auto; }
 .card__bonus { align-self:flex-start; margin-top:-4px; padding:2px 8px; border-radius:var(--pill); background:var(--cream); color:#8a5f00; font-size:11.5px; font-weight:700; }
 .card__bonus:hover { background:#ffeec0; }
-.card__combo { align-self:flex-start; margin-top:-4px; padding:2px 8px; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-size:11.5px; font-weight:800; }
+.card__combo { padding:4px 9px; border-radius:var(--pill); background:var(--dark); color:var(--yellow); font-size:11.5px; font-weight:800; line-height:1; box-shadow:0 6px 14px -8px rgb(14 26 25 / .8); }
+.card__free { align-self:flex-start; margin-top:-4px; color:var(--green); font-size:12px; font-weight:700; }
+.card__lbl--short { display:none; }
 .card__display { margin:auto 0 0; padding:9px 8px; border:1.5px dashed var(--line); border-radius:var(--r-md); color:var(--muted); font-size:12px; font-weight:600; text-align:center; }
 .card--display .card__imgbox { filter:saturate(.85); }
 .card--out .card__imgbox { filter:grayscale(.6); opacity:.7; }
@@ -90,6 +98,10 @@ onUnmounted(() => clearTimeout(timer))
   .card:hover .card__imgbox { transform:translateZ(30px) scale(1.08) rotate(-2deg); }
   .card.is-tilting { transition:box-shadow var(--t), border-color var(--t); }
 }
-@media (max-width:480px) { .card { padding:8px; gap:6px; } .card__img { height:104px; } .card__title { font-size:13px; min-height:36px; } .card__badge { top:14px; left:14px; } .card__out, .card__hot { top:14px; right:14px; } }
+@media (max-width:480px) {
+  .card { padding:8px; gap:6px; } .card__img { height:104px; } .card__title { font-size:13px; min-height:36px; }
+  .card__badges { top:14px; left:14px; } .card__out, .card__hot { top:14px; right:14px; }
+  .card__lbl { display:none; } .card__lbl--short { display:inline; }
+}
 @media (max-width:360px) { .card__title { font-size:12.5px; } }
 </style>

@@ -14,6 +14,13 @@ export function artUrl(kind?: string): string {
   return `/img/art/${FILES[k] ?? k}.webp`
 }
 
+/** Маленькая копия фото из public/img/art (до 400 px, делает tools/shrink-photos.mjs) — для карточек, корзины и окон:
+ *  /img/art/Vodka/a.webp → /img/art/sm/Vodka/a.webp. Остальные адреса (фото из админки, /img/cat…) — undefined. */
+export function thumbUrl(src: string): string | undefined {
+  const m = /^\/img\/art\/(?!sm\/)(.+)\.(?:webp|png|jpe?g)$/i.exec(src)
+  return m ? `/img/art/sm/${m[1]}.webp` : undefined
+}
+
 // Рисунки категорий «цветными карандашами» (public/img/cat, делает tools/render-sketches.mjs): плитки раздела
 // «Տեսականի» на главной и выбор рисунка в админке. Тот же список — на сервере (config.ts → CATEGORY_ARTS).
 export const CATEGORY_ARTS = ['kebab', 'ribs', 'steak', 'lamb', 'chicken', 'fish', 'rabbit', 'sausage', 'veg', 'bread', 'dairy', 'spice', 'drink', 'grill', 'wine', 'vodka', 'cognac']
