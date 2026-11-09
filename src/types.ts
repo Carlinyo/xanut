@@ -43,7 +43,8 @@ export interface KebabPack { name: string; price: number; perKg: number }
 export interface KebabConfig { meats: KebabMeat[]; marinades: string[]; extras: KebabExtra[]; pack?: KebabPack }
 /** Порция шашлыка: обычное мясо — с весом kg; мясо на развес (рыба, кролик) — порциями portions, вес пришлёт работник. */
 export interface KebabSelection { meat: string; kg?: number; portions?: number; marinade: string; extras: string[]; comment?: string }
-export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number }
+/** welcome — баллы в подарок при регистрации (нет у старого сервера). */
+export interface BonusConfig { percent: number; rate: number; matureHours: number; maxQty: number; welcome?: number }
 /** Группа клиента: новый, постоянный, VIP. */
 export type Segment = 'new' | 'regular' | 'vip'
 /** Акция группы: скидка на товары (%), баллы с покупки (%), бесплатная доставка. */
@@ -109,6 +110,9 @@ export interface OrderWeigh { state: WeighState; sentAt: string | null; expiresA
 export type BonusState = 'pending' | 'available' | 'cancelled'
 export interface OrderBonus { earned: number; spent: number; state: BonusState; availableAt: string }
 export interface BonusEntry { orderId: number; createdAt: string; earned: number; spent: number; state: BonusState; availableAt: string }
+/** Баллы не за заказ: welcome — подарок при регистрации; admin — магазин начислил (points > 0) или снял (points < 0).
+ *  note — причина; by — кто из администраторов (только в админке). */
+export interface BonusAdjustment { kind: 'welcome' | 'admin'; points: number; note: string | null; at: string; by?: string | null }
 /** Засчитан ли заказ месяца: vip — в VIP (и в постоянного), regular — в постоянного; small — сумма меньше порога,
  *  pending — ещё не получен, cancelled — отменён. */
 export type OrderMark = 'vip' | 'regular' | 'small' | 'pending' | 'cancelled'
@@ -141,6 +145,8 @@ export interface BonusInfo {
   available: number; pending: number; history: BonusEntry[]; redemptions?: Redemption[]; level?: CustomerLevel
   /** Баллы прежних заказов, которые магазин убрал из базы после выгрузки месяца: в истории их нет, а в балансе они есть. */
   archived?: { earned: number; spent: number } | null
+  /** Баллы не за заказы (подарок при регистрации, начисления и списания магазина), новые первыми; нет у старого сервера. */
+  adjustments?: BonusAdjustment[]
 }
 export interface Order {
   id: number; status: string; createdAt: string
@@ -199,7 +205,8 @@ export interface AdminUser {
   /** Засчитано заказов в этом месяце: в постоянного и в VIP. */
   month?: { regular: number; vip: number }
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
-  bonus: { available: number; pending: number }
+  /** adjustments — баллы вручную и подарок при регистрации, новые первыми (нет у старого сервера). */
+  bonus: { available: number; pending: number; adjustments?: BonusAdjustment[] }
 }
 /** Отчёт за неделю или месяц (раздел «Հաշվետվություններ»). final — закрытых заказов (их можно удалить после выгрузки),
  *  open — незакрытых (в пути, не оплачены). stale — после выгрузки закрылись новые заказы: файл надо скачать заново.

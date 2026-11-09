@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Клиент в админке: контакты, покупки, баллы и группа. Группу можно назначить вручную или вернуть «по покупкам».
-// «Պատվերներ» раскрывает его заказы: что, сколько и когда купил.
+// «Պատվերներ» раскрывает его заказы: что, сколько и когда купил; «± Միավորներ» — начислить или снять баллы вручную.
 import { computed, ref } from 'vue'
 import { t } from '../../i18n'
 import { money } from '../../utils/format'
@@ -9,13 +9,21 @@ import { lastDayText, SEGMENT_ICON, SEGMENTS } from '../../utils/segments'
 import type { AdminUser, Segment } from '../../types'
 import AppInput from '../atoms/AppInput.vue'
 import CustomerOrders from './CustomerOrders.vue'
+import BonusAdjustForm from './BonusAdjustForm.vue'
 
 /** Список заказов клиента открыт (загружается при первом открытии). */
 const showOrders = ref(false)
+/** Форма «начислить / снять баллы» открыта. */
+const showBonus = ref(false)
 
 const props = defineProps<{ user: AdminUser; busy?: boolean }>()
-// role: true — сделать работником (раздел заказов для работников), false — снова покупатель
-const emit = defineEmits<{ segment: [value: Segment | null]; role: [worker: boolean] }>()
+// role: true — сделать работником (раздел заказов для работников), false — снова покупатель;
+// bonus — баллы начислены (points > 0) или сняты: user — клиент уже с новым балансом
+const emit = defineEmits<{ segment: [value: Segment | null]; role: [worker: boolean]; bonus: [user: AdminUser, points: number] }>()
+function bonusDone(user: AdminUser, points: number) {
+  showBonus.value = false
+  emit('bonus', user, points)
+}
 
 const u = computed(() => props.user)
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB')
@@ -65,9 +73,14 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         </div>
         <div><dt>{{ $t('admin.customers.since') }}</dt><dd>{{ day(u.createdAt) }}</dd></div>
       </dl>
-      <button v-if="u.orders || u.cancelled" type="button" class="cu__more" :aria-expanded="showOrders" @click="showOrders = !showOrders">
-        📦 {{ $t(showOrders ? 'admin.customers.hideOrders' : 'admin.customers.showOrders') }} <span aria-hidden="true">{{ showOrders ? '▴' : '▾' }}</span>
-      </button>
+      <div class="cu__btns">
+        <button v-if="u.orders || u.cancelled" type="button" class="cu__more" :aria-expanded="showOrders" @click="showOrders = !showOrders">
+          📦 {{ $t(showOrders ? 'admin.customers.hideOrders' : 'admin.customers.showOrders') }} <span aria-hidden="true">{{ showOrders ? '▴' : '▾' }}</span>
+        </button>
+        <button type="button" class="cu__more" :aria-expanded="showBonus" :disabled="busy" @click="showBonus = !showBonus">
+          ⭐ {{ $t('admin.customers.bonus.open') }} <span aria-hidden="true">{{ showBonus ? '▴' : '▾' }}</span>
+        </button>
+      </div>
     </div>
     <label class="cu__pick">
       <span>{{ $t('admin.customers.group') }}</span>
@@ -80,6 +93,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
     <button v-if="u.role !== 'admin'" type="button" class="cu__role" :disabled="busy" @click="emit('role', u.role !== 'worker')">
       {{ u.role === 'worker' ? '↩ ' + $t('admin.customers.role.undo') : '🧑‍🍳 ' + $t('admin.customers.role.make') }}
     </button>
+    <BonusAdjustForm v-if="showBonus" :user="u" class="cu__orders" @done="bonusDone" @cancel="showBonus = false" />
     <CustomerOrders v-if="showOrders" :user-id="u.id" class="cu__orders" />
   </article>
 </template>
@@ -107,6 +121,8 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
 .cu__stats small { color:var(--muted); font-weight:500; }
 .cu__pick { flex:0 1 250px; display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; }
 .cu__pick :deep(.field) { padding:9px 12px; }
+.cu__btns { display:flex; flex-wrap:wrap; gap:8px; }
+.cu__more:disabled { opacity:.5; cursor:not-allowed; }
 .cu__more { align-self:flex-start; padding:6px 12px; border:1.5px solid var(--yellow); border-radius:var(--pill); background:var(--cream); color:#5c4100; font-size:13px; font-weight:700; transition:background .2s; }
 .cu__more:hover { background:var(--yellow); }
 .cu__orders { flex-basis:100%; min-width:0; }

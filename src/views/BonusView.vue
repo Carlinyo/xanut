@@ -8,7 +8,7 @@ import { useCatalog } from '../stores/catalog'
 import { useConfirm } from '../stores/confirm'
 import { nextLevelText, ruleText, SEGMENT_ICON, SEGMENTS, untilText } from '../utils/segments'
 import { money } from '../utils/format'
-import type { Order, OrderReview, Perks, Product, Redemption, Segment } from '../types'
+import type { BonusAdjustment, BonusEntry, Order, OrderReview, Perks, Product, Redemption, Segment } from '../types'
 import OrdersList from '../components/organisms/OrdersList.vue'
 import SectionTitle from '../components/molecules/SectionTitle.vue'
 import FeatureItem from '../components/molecules/FeatureItem.vue'
@@ -28,8 +28,19 @@ onMounted(async () => {
 
 const percent = computed(() => bonus.percent)
 const hours = computed(() => catalog.config.bonus?.matureHours ?? 3)
+/** Баллы в подарок при регистрации (0 — подарка нет или старый сервер). */
+const welcome = computed(() => catalog.config.bonus?.welcome ?? 0)
 const nf = (n: number) => n.toLocaleString('en-US')
 const left = computed(() => bonus.available)
+
+// История баллов: заказы и баллы не за заказы (подарок при регистрации, начисления и списания магазина) — одним списком,
+// новые первыми
+type HistRow = { key: string; at: string; order?: BonusEntry; adj?: BonusAdjustment }
+const histRows = computed<HistRow[]>(() => [
+  ...bonus.history.map((h) => ({ key: `o${h.orderId}`, at: h.createdAt, order: h })),
+  ...bonus.adjustments.map((a, i) => ({ key: `a${i}`, at: a.at, adj: a })),
+].sort((a, b) => b.at.localeCompare(a.at)))
+const adjTitle = (a: BonusAdjustment) => t(a.kind === 'welcome' ? 'bonus.adjust.welcome' : a.points > 0 ? 'bonus.adjust.added' : 'bonus.adjust.taken')
 
 function statusOf(p: Product): 'guest' | 'lack' | 'out' | 'ok' {
   if (p.inStock === false) return 'out'
@@ -133,6 +144,7 @@ function reviewed(id: number, review: OrderReview) {
         </template>
         <template v-else>
           <p>{{ $t('bonus.guest') }}</p>
+          <p v-if="welcome > 0" class="hero-b__gift">🎁 {{ $t('bonus.guestWelcome', { n: nf(welcome) }) }}</p>
           <div class="hero-b__cta">
             <AppButton :to="{ path: '/login', query: { redirect: '/bonus' } }">{{ $t('auth.login') }}</AppButton>
             <AppButton variant="light" :to="{ path: '/register', query: { redirect: '/bonus' } }">{{ $t('auth.registerBtn') }}</AppButton>
@@ -229,15 +241,25 @@ function reviewed(id: number, review: OrderReview) {
 
     <section v-if="auth.isAuth" class="section">
       <SectionTitle>{{ $t('bonus.historyTitle') }}</SectionTitle>
-      <p v-if="!bonus.history.length && !bonus.archived" class="muted">{{ $t('bonus.historyEmpty') }}</p>
+      <p v-if="!histRows.length && !bonus.archived" class="muted">{{ $t('bonus.historyEmpty') }}</p>
       <ul v-else class="hist">
-        <li v-for="h in bonus.history" :key="h.orderId" :class="`is-${h.state}`">
-          <div class="hist__main">
-            <b>{{ $t('bonus.order', { id: h.orderId }) }}</b>
-            <small>{{ date(h.createdAt) }} · {{ $t('bonus.state.' + h.state) }}</small>
-          </div>
-          <span v-if="h.earned" class="hist__plus">{{ $t('bonus.earned', { n: nf(h.earned) }) }}</span>
-          <span v-if="h.spent" class="hist__minus">{{ $t('bonus.spent', { n: nf(h.spent) }) }}</span>
+        <li v-for="r in histRows" :key="r.key" :class="r.order ? `is-${r.order.state}` : 'is-available'">
+          <template v-if="r.order">
+            <div class="hist__main">
+              <b>{{ $t('bonus.order', { id: r.order.orderId }) }}</b>
+              <small>{{ date(r.order.createdAt) }} · {{ $t('bonus.state.' + r.order.state) }}</small>
+            </div>
+            <span v-if="r.order.earned" class="hist__plus">{{ $t('bonus.earned', { n: nf(r.order.earned) }) }}</span>
+            <span v-if="r.order.spent" class="hist__minus">{{ $t('bonus.spent', { n: nf(r.order.spent) }) }}</span>
+          </template>
+          <!-- подарок при регистрации, начисление или списание магазина (с причиной) -->
+          <template v-else-if="r.adj">
+            <div class="hist__main">
+              <b>{{ adjTitle(r.adj) }}</b>
+              <small>{{ date(r.adj.at) }}<template v-if="r.adj.note"> · {{ r.adj.note }}</template></small>
+            </div>
+            <span :class="r.adj.points > 0 ? 'hist__plus' : 'hist__minus'">{{ $t(r.adj.points > 0 ? 'bonus.earned' : 'bonus.spent', { n: nf(Math.abs(r.adj.points)) }) }}</span>
+          </template>
         </li>
         <!-- прежние заказы магазин убрал из базы после выгрузки месяца: их баллы — одной строкой -->
         <li v-if="bonus.archived" class="is-available">
@@ -254,6 +276,7 @@ function reviewed(id: number, review: OrderReview) {
     <section class="section rules">
       <h2>{{ $t('bonus.rulesTitle') }}</h2>
       <ul>
+        <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
         <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
       </ul>
     </section>
@@ -270,6 +293,7 @@ function reviewed(id: number, review: OrderReview) {
 .hero-b__card small { color:#cbd6d3; }
 .hero-b__num { font-size:clamp(34px, 5vw, 52px); line-height:1.1; color:var(--yellow); text-shadow:0 0 24px rgb(246 178 26 / .35); }
 .hero-b__pending { color:#ffe2a0 !important; }
+.hero-b p.hero-b__gift { color:var(--yellow); font-weight:700; }
 .hero-b__cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
 .steps { display:grid; grid-template-columns:repeat(3, 1fr); border-radius:var(--r-lg); background:var(--bg); }
 .steps > :not(:first-child) { border-left:1px solid var(--line); }

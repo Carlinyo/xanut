@@ -100,6 +100,11 @@ function saved() {
   editing.value = false
   say('ok', t('admin.segments.saved'))
 }
+/** Баллы начислены или сняты (форма в карточке клиента): итог и новый баланс — сообщением над списком. */
+function bonusDone(u: AdminUser, points: number) {
+  const nf = (n: number) => n.toLocaleString('en-US')
+  say('ok', t(points > 0 ? 'admin.customers.bonus.added' : 'admin.customers.bonus.taken', { name: u.name, n: nf(Math.abs(points)), total: nf(u.bonus.available) }))
+}
 </script>
 
 <template>
@@ -144,7 +149,7 @@ function saved() {
     <template v-else-if="admin.usersLoaded">
       <p v-if="!shown.length" class="ac__empty">{{ query.trim() ? $t('admin.customers.emptySearch') : $t('admin.customers.empty') }}</p>
       <div v-else class="ac__list">
-        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" @role="setRole(u, $event)" />
+        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" @role="setRole(u, $event)" @bonus="bonusDone" />
       </div>
       <div v-if="shown.length > limit" class="ac__more">
         <AppButton variant="light" @click="limit += PAGE">{{ $t('admin.customers.more', { n: shown.length - limit }) }}</AppButton>

@@ -130,6 +130,13 @@ export const useAdmin = defineStore('admin', {
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
     },
+    /** Баллы клиенту вручную: points > 0 — начислить, < 0 — снять (не больше доступного — иначе BONUS_INSUFFICIENT).
+     *  note — причина: покупатель увидит её в истории баллов. */
+    async adjustBonus(id: string, points: number, note: string): Promise<AdminUser> {
+      const u = await api<AdminUser>(`/admin/users/${id}/bonus`, { method: 'POST', body: { points, note } })
+      this.users = this.users.map((x) => (x.id === u.id ? u : x))
+      return u
+    },
     /** Заказы одного клиента (карточка клиента), новые первыми. archived — сколько его заказов уже только в файлах отчётов. */
     async loadUserOrders(id: string): Promise<{ orders: AdminOrder[]; archived: number }> {
       return api<{ orders: AdminOrder[]; archived: number }>(`/admin/users/${id}/orders`)
