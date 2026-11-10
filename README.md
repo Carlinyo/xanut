@@ -129,7 +129,8 @@ CSP (`script-src`, `connect-src`, `frame-src`, `img-src`), иначе брауз
 `index.html` — описание и картинка для превью ссылок в Facebook, Telegram, Viber (`public/og.jpg`) и данные магазина для
 Google (адрес, телефон, часы — блок `application/ld+json`). `public/manifest.webmanifest` и `public/icons/` — иконка при
 добавлении сайта на главный экран телефона. `public/robots.txt` и `public/sitemap.xml` — для поисковиков.
-Иконка во вкладке и в выдаче Google — `public/favicon.ico` (16, 32 и 48 px, сделана из `public/icons/icon-192.png`) и `public/favicon.svg`.
+Иконка во вкладке и в выдаче Google — `public/favicon.ico` (16, 32 и 48 px) и `public/icons/favicon-96.png`: середина эмблемы (олень над мангалом) — весь логотип в таком размере не читается.
+Логотип на сайте — `public/img/logo-180.webp` (шапка) и `logo-480.webp` (подвал), компонент `AppLogo.vue`.
 Без настоящего `favicon.ico` по этому адресу отдавалась страница сайта, и Google показывал вместо иконки глобус.
 Адрес сайта — `https://www.misumterq.com`: так он открывается на Vercel (адрес без `www` перенаправляет сюда), так его знает Google.
 Прописан в `index.html`, `robots.txt` и `sitemap.xml` — при смене домена замените его там же.

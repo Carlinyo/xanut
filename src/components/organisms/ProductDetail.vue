@@ -82,7 +82,8 @@ onUnmounted(() => clearTimeout(timer))
 </template>
 
 <style scoped>
-.pdp { display:grid; grid-template-columns:1fr 1fr; gap:clamp(20px, 4vw, 48px); align-items:center; }
+/* фото — не шире 460 px, описание сразу рядом: при колонках пополам между ними на широком экране была пустота */
+.pdp { display:grid; grid-template-columns:minmax(0, 460px) minmax(0, 1fr); gap:clamp(20px, 4vw, 48px); align-items:center; }
 .pdp > * { min-width:0; }
 .pdp__img { position:relative; width:100%; max-width:460px; aspect-ratio:1; padding:clamp(22px, 4vw, 40px); border-radius:var(--r-lg); background:radial-gradient(circle at 50% 40%, #fff, var(--bg)); animation:rise .7s var(--ease) backwards; }
 .pdp__img > :last-child { animation:float 8s ease-in-out infinite; filter:drop-shadow(0 18px 18px rgb(14 26 25 / .25)); }
