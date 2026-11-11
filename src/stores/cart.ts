@@ -88,7 +88,7 @@ export const useCart = defineStore('cart', {
     },
     /** Акция группы покупателя (новый, постоянный, VIP): скидка, баллы, бесплатная доставка. */
     perks: (): Perks => useBonus().perks,
-    /** В корзине есть комбо: доставка входит в его цену — заказ доставят бесплатно, и дальний тоже (так же решит сервер).
+    /** В корзине есть комбо: доставка входит в его цену — заказ доставят бесплатно, а дальний — со скидкой (так же решит сервер).
      *  У порции из окна шашлыка товар — её мясо (kebab.meat — номер товара). */
     hasCombo(): boolean {
       const byId = new Map(useCatalog().products.map((p) => [p.id, p]))
@@ -103,12 +103,21 @@ export const useCart = defineStore('cart', {
       return !!far && this.deliveryKm !== null && this.deliveryKm > far.overKm
     },
     /** Цена с акцией — так же, как посчитает сервер. Доставка платная при любой сумме (дальняя — deliveryFar.fee);
-     *  бесплатно — только по акции группы (VIP) и с комбо, и на дальнюю тоже. */
+     *  бесплатно — только по акции группы (VIP, и на дальнюю тоже) и с комбо; дальний заказ с комбо — со скидкой (comboFee). */
     priced(): ReturnType<typeof applyPerks> {
-      const { deliveryFee, deliveryFar } = useCatalog().config
-      // порога бесплатной доставки нет: бесплатно — с комбо (здесь) и по акции группы VIP (applyPerks)
-      const base = this.subtotal === 0 || this.hasCombo ? 0 : this.far && deliveryFar ? deliveryFar.fee : deliveryFee
+      const { config, comboFar } = useCatalog()
+      const { deliveryFee, deliveryFar } = config
+      // порога бесплатной доставки нет: бесплатно — с комбо (здесь, дальний — comboFee) и по акции группы VIP (applyPerks)
+      const base = this.subtotal === 0 ? 0
+        : this.hasCombo ? (this.far && comboFar ? comboFar.fee : 0)
+        : this.far && deliveryFar ? deliveryFar.fee : deliveryFee
       return applyPerks(this.subtotal, base, this.perks)
+    },
+    /** Скидка на дальнюю доставку с комбо: сколько она стоила бы без комбо (зачёркнутая цена «2,000 → 1,000»).
+     *  0 — скидки нет (самовывоз, нет комбо, адрес рядом, доставка и так бесплатна по акции группы). */
+    deliveryWas(): number {
+      const { comboFar } = useCatalog()
+      return this.hasCombo && this.far && comboFar && this.delivery > 0 && comboFar.full > this.delivery ? comboFar.full : 0
     },
     /** Скидка по акции группы (֏). */
     discount(): number { return this.priced.discount },

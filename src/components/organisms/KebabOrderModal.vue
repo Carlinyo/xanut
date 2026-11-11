@@ -6,6 +6,7 @@ import { uuid } from '../../utils/id'
 import { KEBAB_COMMENT_MAX, KEBAB_KG, isKebab, isValidKg, kebabPrice } from '../../utils/kebab'
 import { KIND_FILTERS, KIND_ICON, kindOf, type KindFilter } from '../../utils/kinds'
 import { WEIGH_DEFAULT, isValidPortions } from '../../utils/weigh'
+import { comboFarNote } from '../../utils/offer'
 import { MAX_QTY, portionsName, useCart } from '../../stores/cart'
 import { useCatalog } from '../../stores/catalog'
 import { useUI } from '../../stores/ui'
@@ -127,8 +128,8 @@ function add() {
           </optgroup>
         </FormField>
 
-        <!-- комбо: что в него входит (доставка — бесплатно) -->
-        <p v-if="item?.product?.combo" class="kb__combo">🎁 {{ item.product.description || $t('combo.long') }}</p>
+        <!-- комбо: что в него входит (доставка — бесплатно, дальняя — со скидкой) -->
+        <p v-if="item?.product?.combo" class="kb__combo">🎁 {{ item.product.description || $t('combo.long') }} {{ comboFarNote(catalog.comboFar) }}</p>
 
         <template v-if="perPiece">
           <FormField

@@ -257,7 +257,9 @@ function summary(): ConfirmOptions {
     { label: t('cart.items'), value: t('confirm.order.items', { n: cart.count, sum: money(cart.subtotal) }) },
   ]
   if (cart.discount) rows.push({ label: discountLabel(bonus.level?.segment), value: `−${money(cart.discount)}` })
-  if (!pickup.value) rows.push({ label: t('cart.delivery') + (cart.far && cart.delivery ? ` (${t('cart.farShort', { km: farFee.value?.overKm ?? 5 })})` : ''), value: cart.delivery ? money(cart.delivery) : t('cart.free') })
+  // дальний заказ с комбо: доставка со скидкой — прежняя цена зачёркнута
+  if (!pickup.value) rows.push({ label: t('cart.delivery') + (cart.far && cart.delivery ? ` (${t('cart.farShort', { km: farFee.value?.overKm ?? 5 })})` : ''),
+    value: cart.delivery ? money(cart.delivery) : t('cart.free'), ...(cart.deliveryWas ? { was: money(cart.deliveryWas) } : {}) })
   if (form.comment.trim()) rows.push({ label: t('checkout.comment'), value: form.comment.trim() })
   rows.push({ label: t('cart.total'), value: money(cart.total), strong: true })
   const pay = form.payment === 'online'
@@ -345,7 +347,9 @@ async function submit() {
       :hint="$t(exact ? 'slots.hintMeat' : 'slots.hint')" :compact="exact"
       :loading="slotsLoading" :failed="slotsFailed" :error="errors.slot" @retry="loadSlots"
     />
-    <small v-if="cart.far && farFee && cart.delivery" class="co__far" role="status">🚚 {{ $t('checkout.farHint', { km: farFee.overKm, fee: money(farFee.fee) }) }}</small>
+    <small v-if="cart.far && farFee && cart.delivery" class="co__far" role="status">🚚 {{ cart.deliveryWas
+      ? $t('checkout.farHintCombo', { km: farFee.overKm, fee: money(cart.delivery), full: money(cart.deliveryWas) })
+      : $t('checkout.farHint', { km: farFee.overKm, fee: money(farFee.fee) }) }}</small>
     <FormField v-if="payOptions.length > 1" v-model="form.payment" as="select" :label="$t('checkout.payment')">
       <option v-for="p in payOptions" :key="p" :value="p">{{ paymentLabel(p, cart.method) }}</option>
     </FormField>

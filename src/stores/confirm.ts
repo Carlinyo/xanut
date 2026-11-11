@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
-/** Строка сводки в окне подтверждения: «Վճարում — Կանխիկ». */
-export interface ConfirmRow { label: string; value: string; strong?: boolean }
+/** Строка сводки в окне подтверждения: «Վճարում — Կանխիկ». was — прежняя цена, зачёркнутая перед value (скидка). */
+export interface ConfirmRow { label: string; value: string; strong?: boolean; was?: string }
 /** Поле комментария в окне (askNote): подпись, подсказка в пустом поле, готовые варианты (нажатие подставляет текст). */
 export interface NoteField { label: string; placeholder?: string; presets?: string[]; hint?: string }
 export interface ConfirmOptions {

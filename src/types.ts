@@ -52,14 +52,17 @@ export interface Perks { discount: number; bonusPercent: number; freeDelivery: b
 /** Группа на месяц: сколько полученных заказов этого месяца нужно и от какой суммы каждый (товары без доставки). */
 export interface SegmentRules { regularOrders: number; regularMin: number; vipOrders: number; vipMin: number }
 export interface SegmentSettings { perks: Record<Segment, Perks>; rules: SegmentRules }
+/** Дальняя доставка заказа с комбо — со скидкой: дальше overKm от магазина fee ֏ вместо full ֏. */
+export interface ComboFar { overKm: number; fee: number; full: number }
 /** hours — часы работы по времени Армении: заказ на сайте можно оформить только с open:00 до close:00 (у старого сервера нет).
- *  Порога бесплатной доставки нет: бесплатно — только VIP (segments.perks.*.freeDelivery) и заказ с комбо. */
+ *  Порога бесплатной доставки нет: бесплатно — только VIP (segments.perks.*.freeDelivery) и заказ с комбо (дальний — со скидкой). */
 export interface ShopConfig { deliveryFee: number; hours?: { open: number; close: number }; phone?: { countryCode: string; mobileCodes: string[] }; bonus?: BonusConfig
   segments?: SegmentSettings
   /** Круг доставки вокруг магазина (нет у старого сервера). */
   zone?: DeliveryZone
-  /** Дальняя доставка: адрес дальше overKm от магазина — fee ֏ (порог бесплатной доставки на неё не действует). */
-  deliveryFar?: { overKm: number; fee: number }
+  /** Дальняя доставка: адрес дальше overKm от магазина — fee ֏ (порог бесплатной доставки на неё не действует).
+   *  comboFee — дальняя доставка заказа с комбо: не бесплатно, а со скидкой (нет у старого сервера — с комбо бесплатно везде). */
+  deliveryFar?: { overKm: number; fee: number; comboFee?: number }
   /** Оплата картой на сайте (AmeriaBank) включена на сервере. */
   onlinePay?: boolean
   /** Рыба, кролик: порций в позиции, минут на подтверждение чека, пределы веса (нет у старого сервера). */

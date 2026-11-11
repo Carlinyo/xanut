@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
 import { useUI } from '../../stores/ui'
+import { useCatalog } from '../../stores/catalog'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppBadge from '../atoms/AppBadge.vue'
 import HotTag from '../atoms/HotTag.vue'
@@ -9,13 +10,13 @@ import PriceTag from '../atoms/PriceTag.vue'
 import AppButton from '../atoms/AppButton.vue'
 import { flyToCart } from '../../utils/flyToCart'
 import { isKebab } from '../../utils/kebab'
-import { isOffer } from '../../utils/offer'
+import { comboBadge, isOffer } from '../../utils/offer'
 
 import type { Product } from '../../types'
 
 const props = defineProps<{ product: Product }>()
 const emit = defineEmits<{ add: [product: Product] }>()
-const ui = useUI()
+const ui = useUI(), catalog = useCatalog()
 const added = ref(false)
 const imgBox = ref<HTMLElement | null>(null)
 /** Есть в наличии (старый сервер поля не присылает — значит, есть). */
@@ -53,7 +54,7 @@ onUnmounted(() => clearTimeout(timer))
     </RouterLink>
     <h3 class="card__title"><RouterLink :to="`/products/${product.id}`">{{ product.name }}</RouterLink></h3>
     <PriceTag :price="product.price" :old="product.old" :unit="product.unit" />
-    <span v-if="product.combo" class="card__free">🚚 {{ $t('combo.free') }}</span>
+    <span v-if="product.combo" class="card__free">🚚 {{ comboBadge(catalog.comboFar) }}</span>
     <RouterLink v-if="product.bonusPoints" to="/bonus" class="card__bonus">{{ $t('bonus.orPoints', { n: product.bonusPoints.toLocaleString('en-US') }) }}</RouterLink>
     <StarRating v-if="product.reviews" :value="product.rating" :count="product.reviews" />
     <template v-if="product.orderable">

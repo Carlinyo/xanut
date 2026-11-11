@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref } from 'vue'
 import { useCart } from '../../stores/cart'
 import { useUI } from '../../stores/ui'
+import { useCatalog } from '../../stores/catalog'
 import ProductArt from '../atoms/ProductArt.vue'
 import AppBadge from '../atoms/AppBadge.vue'
 import HotTag from '../atoms/HotTag.vue'
@@ -11,12 +12,12 @@ import AppButton from '../atoms/AppButton.vue'
 import { flyToCart } from '../../utils/flyToCart'
 import { money } from '../../utils/format'
 import { isKebab } from '../../utils/kebab'
-import { isOffer } from '../../utils/offer'
+import { comboFarNote, isOffer } from '../../utils/offer'
 
 import type { Product } from '../../types'
 
 const props = defineProps<{ product: Product }>()
-const cart = useCart(), ui = useUI()
+const cart = useCart(), ui = useUI(), catalog = useCatalog()
 const added = ref(false)
 const imgBox = ref<HTMLElement | null>(null)
 /** Есть в наличии (старый сервер поля не присылает — значит, есть). */
@@ -52,7 +53,7 @@ onUnmounted(() => clearTimeout(timer))
         <PriceTag :price="product.price" :old="product.old" :unit="product.unit" size="lg" />
         <small class="pdp__unit">{{ $t(byWeight ? 'product.perKg' : 'product.perPc') }}</small>
         <p class="pdp__desc" :class="{ muted: !product.description }">{{ product.description || $t('product.info') }}</p>
-        <p v-if="product.combo" class="pdp__combo">🎁 {{ $t('combo.long') }}</p>
+        <p v-if="product.combo" class="pdp__combo">🎁 {{ $t('combo.long') }} {{ comboFarNote(catalog.comboFar) }}</p>
         <!-- рыба, кролик: заказывают порциями, точную цену покупатель подтвердит после взвешивания -->
         <p v-if="product.weighed" class="pdp__combo">⚖️ {{ $t('weigh.perKgNote', { price: product.price.toLocaleString('en-US') }) }}</p>
       </template>

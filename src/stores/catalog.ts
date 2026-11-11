@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { api, ApiError } from '../api'
-import type { Category, KebabConfig, Product, ShopConfig } from '../types'
+import type { Category, ComboFar, KebabConfig, Product, ShopConfig } from '../types'
 import { setMobileCodes } from '../utils/phone'
 
 let pending: Promise<void> | null = null // идущая загрузка: повторные вызовы ждут её, а не запускают вторую
@@ -18,6 +18,12 @@ export const useCatalog = defineStore('catalog', {
   getters: {
     /** Товары магазина без товаров «только за баллы»: те показываются лишь на странице бонусов. */
     shopProducts: (s): Product[] => s.products.filter((p) => !p.bonusOnly),
+    /** Дальняя доставка с комбо — со скидкой: дальше overKm от магазина fee ֏ вместо full ֏.
+     *  null — старый сервер: с комбо доставка бесплатна везде. */
+    comboFar: (s): ComboFar | null => {
+      const far = s.config.deliveryFar
+      return far?.comboFee !== undefined ? { overKm: far.overKm, fee: far.comboFee, full: far.fee } : null
+    },
   },
   actions: {
     /** Загружает каталог один раз; при ошибке можно вызвать снова (кнопка «Повторить»).

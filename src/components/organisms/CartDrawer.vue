@@ -43,6 +43,13 @@ const freeHint = computed(() => {
   const groups = perks ? SEGMENTS.filter((s) => perks[s].freeDelivery).map((s) => t('segments.short.' + s)) : []
   return groups.length ? t('cart.freeHint', { groups: groups.join('», «') }) : t('cart.freeHintCombo')
 })
+/** Комбо: доставка бесплатна, а дальше deliveryFar.overKm — со скидкой. Адрес выбран и рядом (или старый сервер) — просто
+ *  «бесплатно»; выбран дальний — «со скидкой, вместо»; адреса ещё нет — оба условия. */
+const comboNote = computed(() => {
+  const f = catalog.comboFar
+  if (!f || (cart.deliveryKm !== null && !cart.deliveryWas)) return t('combo.cart')
+  return t(cart.deliveryWas ? 'combo.cartFarApplied' : 'combo.cartFar', { km: f.overKm, fee: money(f.fee), full: money(f.full) })
+})
 const methodOptions = computed(() => [
   { value: 'delivery' as DeliveryMethod, label: `${t('cart.delivery')} ${cart.deliveryPrice ? '+' + money(cart.deliveryPrice) : '· ' + t('cart.free')}`, icon: '🚚' },
   { value: 'pickup' as DeliveryMethod, label: t('cart.pickup'), icon: '🏪' },
@@ -88,7 +95,9 @@ const methodOptions = computed(() => [
           <template v-if="cart.discount">
             <dt>🏷 {{ discountLabel(level?.segment) }}</dt><dd class="sum__disc">−{{ money(cart.discount) }}</dd>
           </template>
-          <dt>{{ $t(cart.method === 'pickup' ? 'cart.pickup' : 'cart.delivery') }}</dt><dd>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
+          <dt>{{ $t(cart.method === 'pickup' ? 'cart.pickup' : 'cart.delivery') }}</dt>
+          <!-- дальний заказ с комбо: доставка со скидкой — прежняя цена зачёркнута -->
+          <dd><s v-if="cart.deliveryWas" class="sum__was">{{ money(cart.deliveryWas) }}</s>{{ cart.delivery ? money(cart.delivery) : $t('cart.free') }}</dd>
           <dt class="sum__total">{{ $t('cart.total') }}<small v-if="cart.hasWeighed" class="sum__note"> ({{ $t('weigh.totalHint') }})</small></dt>
           <dd class="sum__total">{{ money(cart.total) }}</dd>
         </dl>
@@ -97,8 +106,8 @@ const methodOptions = computed(() => [
         <p v-if="showPerks && level" class="drawer__perk">
           {{ SEGMENT_ICON[level.segment] }} <b>{{ $t('segments.names.' + level.segment) }}</b> · {{ perksText(level.perks) }}
         </p>
-        <p v-if="cart.method === 'delivery' && cart.delivery" class="muted">🚚 {{ freeHint }}</p>
-        <p v-if="cart.method === 'delivery' && cart.hasCombo" class="drawer__earn">🎁 {{ $t('combo.cart') }}</p>
+        <p v-if="cart.method === 'delivery' && cart.delivery && !cart.hasCombo" class="muted">🚚 {{ freeHint }}</p>
+        <p v-if="cart.method === 'delivery' && cart.hasCombo" class="drawer__earn">🎁 {{ comboNote }}</p>
         <p v-else-if="cart.method === 'delivery' && far" class="muted">
           {{ $t(cart.far ? 'cart.farApplied' : 'cart.farNote', { km: far.overKm, fee: money(far.fee) }) }}
         </p>
@@ -133,6 +142,7 @@ h2 { margin:0; font-size:22px; }
 .sum dd { margin:0; text-align:right; }
 .sum .sum__total { margin-top:4px; padding-top:10px; border-top:1px dashed var(--line); color:var(--ink); font-size:18px; font-weight:800; }
 .sum .sum__disc { color:var(--green); font-weight:700; }
+.sum__was { margin-right:6px; color:var(--muted); font-size:13px; }
 .drawer__perk { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--dark); color:#e9efed; font-size:13px; line-height:1.45; }
 .drawer__perk b { color:var(--yellow); }
 .drawer__earn { margin:10px 0 0; padding:9px 12px; border-radius:var(--r-md); background:var(--cream); color:#7a5600; font-size:13px; font-weight:600; }

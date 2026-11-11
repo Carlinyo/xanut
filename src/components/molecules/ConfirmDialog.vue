@@ -37,7 +37,7 @@ function pick(p: string) {
         <dl v-if="c.current.rows?.length" class="cf__rows">
           <template v-for="r in c.current.rows" :key="r.label">
             <dt :class="{ strong: r.strong }">{{ r.label }}</dt>
-            <dd :class="{ strong: r.strong }">{{ r.value }}</dd>
+            <dd :class="{ strong: r.strong }"><s v-if="r.was" class="cf__was">{{ r.was }}</s>{{ r.value }}</dd>
           </template>
         </dl>
         <div v-if="c.current.note" class="cf__note">
@@ -76,6 +76,7 @@ function pick(p: string) {
 .cf__rows { display:grid; grid-template-columns:auto 1fr; gap:8px 16px; margin:4px 0 0; padding:14px 16px; border-radius:var(--r-md); background:var(--bg); font-size:14px; }
 .cf__rows dt { color:var(--muted); }
 .cf__rows dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.cf__was { margin-right:6px; color:var(--muted); font-size:13px; }
 .cf__rows .strong { padding-top:8px; border-top:1px dashed var(--line); color:var(--ink); font-size:17px; font-weight:800; }
 .cf__rows dt.strong { margin-right:-16px; padding-right:16px; } /* черта итога — через всю строку, без разрыва между колонками */
 .cf__note { display:flex; flex-direction:column; gap:8px; }
