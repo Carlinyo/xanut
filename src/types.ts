@@ -217,7 +217,9 @@ export interface AdminUser {
 export interface ExportRow {
   id: string; kind: 'week' | 'month'; key: string; first: string; last: string; label: string
   current: boolean; closed: boolean
-  orders: number; final: number; open: number
+  /** orders — все заказы периода (на сервере и в архивах недель); final — закрытые на сервере (их можно удалить);
+   *  archived — удалённые после выгрузки недели, копии лежат в архиве (у месяца их удаляет очистка месяца). */
+  orders: number; final: number; open: number; archived: number
   downloadedAt: string | null; downloadedBy: string | null; stale: boolean
   purgedAt: string | null; purged: number
   todo: 'download' | 'purge' | null

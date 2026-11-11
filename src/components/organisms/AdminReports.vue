@@ -1,7 +1,9 @@
 <script setup lang="ts">
-// Отчёты: заказы и клиенты за неделю и за месяц — файлом Excel. Закончился месяц — шаг 1: скачать файл,
-// шаг 2: удалить закрытые заказы месяца с сервера (чтобы база не росла). Шаг 2 открывается только после шага 1 —
-// это проверяет и сервер: удаляется лишь то, что есть в сохранённом файле в том же виде.
+// Отчёты: заказы и клиенты за неделю и за месяц — файлом Excel. Закончилась неделя — скачать её файл, затем удалить
+// её закрытые заказы с сервера (чтобы база не росла): их копии остаются в сжатом архиве, и файл месяца собирается из
+// всех недель одним целым. Закончился месяц — шаг 1: скачать файл, шаг 2: удалить данные месяца (оставшиеся заказы
+// и архивы недель). Удаление открывается только после скачивания — это проверяет и сервер: удаляется лишь то, что
+// есть в сохранённом файле в том же виде.
 import { onMounted, onUnmounted, ref } from 'vue'
 import { t } from '../../i18n'
 import { ApiError, commonErrorKey } from '../../api'
@@ -38,7 +40,7 @@ function say(tone: 'ok' | 'bad', text: string) {
 }
 onUnmounted(() => clearTimeout(noticeTimer))
 
-const KNOWN = ['EXPORT_OUTDATED', 'NOT_DOWNLOADED', 'MONTH_NOT_OVER']
+const KNOWN = ['EXPORT_OUTDATED', 'NOT_DOWNLOADED', 'MONTH_NOT_OVER', 'WEEK_NOT_OVER']
 const errorText = (e: unknown) => (e instanceof ApiError && KNOWN.includes(e.code) ? t('admin.reports.errors.' + e.code) : t(commonErrorKey(e)))
 
 async function download(r: ExportRow) {
@@ -53,24 +55,30 @@ async function download(r: ExportRow) {
   }
 }
 
-/** Месяц можно очистить: закончился, файл скачан и не устарел, есть закрытые заказы. */
-const canPurge = (r: ExportRow) => r.kind === 'month' && r.closed && !!r.downloadedAt && !r.stale && r.final > 0
+/** Сколько можно удалить: закрытые заказы на сервере; у месяца — ещё и заказы в архивах его недель. */
+const removable = (r: ExportRow) => r.final + (r.kind === 'month' ? r.archived : 0)
+/** Период можно очистить: закончился, файл скачан и не устарел, есть что удалять. */
+const canPurge = (r: ExportRow) => r.closed && !!r.downloadedAt && !r.stale && removable(r) > 0
+/** Очищен: удаляли, и удалять больше нечего. */
+const purgedAll = (r: ExportRow) => !!r.purgedAt && !removable(r)
 function purgeHint(r: ExportRow): string {
-  if (!r.closed) return t('admin.reports.purgeLater')
-  if (!r.final) return t('admin.reports.nothingToPurge')
+  if (!r.closed) return t(r.kind === 'month' ? 'admin.reports.purgeLater' : 'admin.reports.purgeLaterWeek')
+  if (!removable(r)) return t('admin.reports.nothingToPurge')
   if (!r.downloadedAt) return t('admin.reports.purgeLocked')
   if (r.stale) return t('admin.reports.purgeStale')
-  return t('admin.reports.purgeReady', { n: r.final })
+  return t('admin.reports.purgeReady', { n: removable(r) })
 }
 
 async function purge(r: ExportRow) {
   if (busy.value || !canPurge(r)) return
   const ok = await confirm.ask({
-    icon: '🗑️', title: t('admin.reports.confirm.title'), text: t('admin.reports.confirm.text'), yes: t('admin.reports.confirm.yes'), tone: 'danger',
+    icon: '🗑️', yes: t('admin.reports.confirm.yes'), tone: 'danger',
+    title: t(r.kind === 'month' ? 'admin.reports.confirm.title' : 'admin.reports.confirm.titleWeek'),
+    text: t(r.kind === 'month' ? 'admin.reports.confirm.text' : 'admin.reports.confirm.textWeek'),
     rows: [
-      { label: t('admin.reports.confirm.month'), value: r.label },
+      { label: t(r.kind === 'month' ? 'admin.reports.confirm.month' : 'admin.reports.confirm.week'), value: r.label },
       ...(r.open ? [{ label: t('admin.reports.confirm.kept'), value: t('admin.reports.confirm.count', { n: r.open }) }] : []),
-      { label: t('admin.reports.confirm.deleted'), value: t('admin.reports.confirm.count', { n: r.final }), strong: true },
+      { label: t('admin.reports.confirm.deleted'), value: t('admin.reports.confirm.count', { n: removable(r) }), strong: true },
     ],
   })
   if (!ok) return
@@ -78,7 +86,7 @@ async function purge(r: ExportRow) {
   try {
     const { deleted, kept } = await admin.purgeExport(r.id)
     if (kept) say('bad', t('admin.reports.notice.kept', { n: kept }))
-    else say('ok', t(deleted ? 'admin.reports.notice.purged' : 'admin.reports.notice.nothing', { n: deleted }))
+    else say('ok', t(!deleted ? 'admin.reports.notice.nothing' : r.kind === 'month' ? 'admin.reports.notice.purged' : 'admin.reports.notice.archived', { n: deleted }))
   } catch (e) {
     if (authError(e)) return
     say('bad', `${r.label}: ${errorText(e)}`)
@@ -117,7 +125,10 @@ async function purge(r: ExportRow) {
             <span class="rep__chip" :class="m.current ? 'is-current' : 'is-ended'">{{ $t(m.current ? 'admin.reports.current' : 'admin.reports.ended') }}</span>
             <span v-if="m.todo" class="rep__todo">● {{ $t('admin.reports.todo.' + m.todo) }}</span>
           </header>
-          <p class="rep__count">{{ m.orders ? $t('admin.reports.orders', { n: m.orders }) : $t('admin.reports.noOrders') }}</p>
+          <p class="rep__count">
+            {{ m.orders ? $t('admin.reports.orders', { n: m.orders }) : $t('admin.reports.noOrders') }}
+            <small v-if="m.archived" class="rep__arch">· {{ $t('admin.reports.archived', { n: m.archived }) }}</small>
+          </p>
 
           <ol class="rep__steps">
             <li class="rep__step" :class="{ 'is-done': m.downloadedAt && !m.stale }">
@@ -131,14 +142,14 @@ async function purge(r: ExportRow) {
                 <small v-else>{{ $t('admin.reports.notDownloaded') }}</small>
               </div>
             </li>
-            <li class="rep__step" :class="{ 'is-done': m.purgedAt && !m.final }">
-              <span class="rep__num" aria-hidden="true">{{ m.purgedAt && !m.final ? '✓' : '2' }}</span>
+            <li class="rep__step" :class="{ 'is-done': purgedAll(m) }">
+              <span class="rep__num" aria-hidden="true">{{ purgedAll(m) ? '✓' : '2' }}</span>
               <div class="rep__body">
                 <button type="button" class="rep__purge" :disabled="!canPurge(m) || !!busy" @click="purge(m)">
                   🗑 {{ isBusy(m, 'purge') ? $t('admin.reports.purging') : $t('admin.reports.purge') }}
                 </button>
                 <small v-if="m.purgedAt" class="rep__ok">{{ $t('admin.reports.purged', { time: stamp(m.purgedAt), n: m.purged }) }}</small>
-                <small v-if="!(m.purgedAt && !m.final)">{{ purgeHint(m) }}</small>
+                <small v-if="!purgedAll(m)">{{ purgeHint(m) }}</small>
               </div>
             </li>
           </ol>
@@ -151,13 +162,24 @@ async function purge(r: ExportRow) {
         <li v-for="w in admin.exports.weeks" :key="w.id" class="wk" :class="{ 'is-todo': w.todo }" :aria-busy="busy?.id === w.id || undefined">
           <div class="wk__info">
             <b>{{ w.label }}</b>
-            <small>{{ w.orders ? $t('admin.reports.orders', { n: w.orders }) : $t('admin.reports.noOrders') }}<template v-if="w.current"> · {{ $t('admin.reports.current') }}</template></small>
+            <small>{{ w.orders ? $t('admin.reports.orders', { n: w.orders }) : $t('admin.reports.noOrders') }}<template v-if="w.archived"> · {{ $t('admin.reports.archived', { n: w.archived }) }}</template><template v-if="w.current"> · {{ $t('admin.reports.current') }}</template></small>
           </div>
-          <small v-if="w.downloadedAt" class="wk__state is-done">✓ {{ $t('admin.reports.downloaded', { time: stamp(w.downloadedAt) }) }}</small>
-          <small v-else-if="w.todo" class="wk__state">● {{ $t('admin.reports.todo.download') }}</small>
-          <AppButton size="sm" :variant="w.todo ? 'primary' : 'light'" :disabled="!!busy" @click="download(w)">
-            ⬇ {{ isBusy(w, 'download') ? $t('admin.reports.downloading') : 'Excel' }}
-          </AppButton>
+          <div class="wk__states">
+            <small v-if="w.stale && w.final" class="wk__state">⚠ {{ $t('admin.reports.stale') }}</small>
+            <small v-else-if="w.downloadedAt" class="wk__state is-done">✓ {{ $t('admin.reports.downloaded', { time: stamp(w.downloadedAt) }) }}</small>
+            <small v-else-if="w.todo" class="wk__state">● {{ $t('admin.reports.todo.download') }}</small>
+            <small v-if="w.purgedAt" class="wk__state is-done">🗑 {{ $t('admin.reports.purged', { time: stamp(w.purgedAt), n: w.purged }) }}</small>
+            <small v-else-if="w.closed && w.final" class="wk__state" :class="{ 'is-hint': !canPurge(w) }">{{ purgeHint(w) }}</small>
+          </div>
+          <div class="wk__acts">
+            <AppButton size="sm" :variant="w.todo === 'download' ? 'primary' : 'light'" :disabled="!!busy" @click="download(w)">
+              ⬇ {{ isBusy(w, 'download') ? $t('admin.reports.downloading') : 'Excel' }}
+            </AppButton>
+            <!-- удалить заказы недели с сервера: после скачивания её файла; копии остаются в архиве для файла месяца -->
+            <button v-if="w.closed && (w.final || w.purgedAt)" type="button" class="rep__purge" :disabled="!canPurge(w) || !!busy" @click="purge(w)">
+              🗑 {{ isBusy(w, 'purge') ? $t('admin.reports.purging') : $t('admin.reports.purgeWeek') }}
+            </button>
+          </div>
         </li>
       </ul>
     </template>
@@ -210,8 +232,12 @@ async function purge(r: ExportRow) {
 .wk__info { display:flex; flex-direction:column; gap:2px; min-width:0; margin-right:auto; }
 .wk__info b { font-size:15px; font-variant-numeric:tabular-nums; }
 .wk__info small { color:var(--muted); font-size:12.5px; }
+.wk__states { display:flex; flex-direction:column; align-items:flex-end; gap:2px; text-align:right; }
+.wk__acts { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.rep__arch { color:var(--muted); font-weight:500; }
 .wk__state { color:#b07a00; font-size:12.5px; font-weight:700; }
+.wk__state.is-hint { color:var(--muted); font-weight:500; }
 .wk__state.is-done { color:var(--green); font-weight:600; }
-@media (max-width:520px) { .rep { padding:14px; } .rep__todo { margin-left:0; } .wk { padding:12px 14px; } }
+@media (max-width:520px) { .rep { padding:14px; } .rep__todo { margin-left:0; } .wk { padding:12px 14px; } .wk__states { align-items:flex-start; text-align:left; width:100%; } }
 @media (prefers-reduced-motion:reduce) { .nt-enter-active, .nt-leave-active { transition:none; } }
 </style>

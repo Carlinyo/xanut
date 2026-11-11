@@ -5,6 +5,7 @@ import { api, ApiError } from '../api'
 import { awaitingPay } from '../utils/payment'
 import { weighOpen } from '../utils/weigh'
 import { useAuth } from '../stores/auth'
+import { isAdminRole } from '../utils/roles'
 import { useBonus } from '../stores/bonus'
 import { useLogout } from '../composables/useLogout'
 import { nextLevelText, perksText, SEGMENT_ICON, untilText } from '../utils/segments'
@@ -64,7 +65,7 @@ const marks = computed(() => Object.fromEntries((level.value?.marks ?? []).map((
       <h1>{{ $t('account.mine') }}</h1>
       <div class="duo acct-top">
         <ProfileCard>
-          <AppButton v-if="auth.user.role === 'admin'" variant="light" to="/admin">⚙ {{ $t('admin.title') }}</AppButton>
+          <AppButton v-if="isAdminRole(auth.user.role)" variant="light" to="/admin">⚙ {{ $t('admin.title') }}</AppButton>
           <AppButton v-if="auth.user.role === 'worker'" variant="light" to="/staff">🧑‍🍳 {{ $t('staff.title') }}</AppButton>
           <AppButton @click="logout">{{ $t('account.logout') }}</AppButton>
         </ProfileCard>

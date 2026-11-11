@@ -80,16 +80,20 @@ async function setSegment(u: AdminUser, segment: Segment | null) {
     busy.value.delete(u.id)
   }
 }
-/** Работник видит только заказы (раздел «Պատվերներ» для работников) и отмечает «Готово». */
-async function setRole(u: AdminUser, worker: boolean) {
-  const ok = await confirm.ask(worker
-    ? { icon: '🧑‍🍳', title: t('admin.customers.role.makeTitle', { name: u.name }), text: t('admin.customers.role.makeText'), yes: t('admin.customers.role.makeYes') }
-    : { icon: '↩️', title: t('admin.customers.role.undoTitle', { name: u.name }), text: t('admin.customers.role.undoText'), yes: t('admin.customers.role.undoYes'), tone: 'danger' })
+/** Работник видит только заказы (раздел «Պատվերներ» для работников) и отмечает «Готово»; младший администратор —
+ *  админку без клиентов, акций групп и отчётов. customer — снять роль. */
+async function setRole(u: AdminUser, role: 'worker' | 'manager' | 'customer') {
+  const key = role === 'customer' ? (u.role === 'manager' ? 'undoManager' : 'undo') : role === 'manager' ? 'makeManager' : 'make'
+  const ok = await confirm.ask({
+    icon: role === 'customer' ? '↩️' : role === 'manager' ? '🛠' : '🧑‍🍳',
+    title: t(`admin.customers.role.${key}Title`, { name: u.name }), text: t(`admin.customers.role.${key}Text`), yes: t(`admin.customers.role.${role === 'customer' ? 'undoYes' : 'makeYes'}`),
+    ...(role === 'customer' ? { tone: 'danger' as const } : {}),
+  })
   if (!ok) return
   busy.value.add(u.id)
   try {
-    const r = await admin.setRole(u.id, worker ? 'worker' : 'customer')
-    say('ok', t(worker ? 'admin.customers.role.made' : 'admin.customers.role.undone', { name: r.name }))
+    const r = await admin.setRole(u.id, role)
+    say('ok', t(`admin.customers.role.${key === 'make' ? 'made' : key === 'undo' ? 'undone' : key === 'makeManager' ? 'madeManager' : 'undoneManager'}`, { name: r.name }))
   } catch (e) {
     if (!authError(e)) say('bad', `${u.name}: ${t(commonErrorKey(e))}`)
   } finally {

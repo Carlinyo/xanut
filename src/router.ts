@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuth } from './stores/auth'
+import { isAdminRole } from './utils/roles'
 import { t } from './i18n'
 // Главная — статически (это страница входа на сайт: грузим сразу, без лишнего запроса за чанком).
 import HomeView from './views/HomeView.vue'
@@ -51,8 +52,8 @@ router.beforeEach(async (to) => {
   // работнику открыт только раздел заказов: любой другой адрес (главная, каталог, кабинет…) ведёт туда
   if (auth.user?.role === 'worker' && to.path !== '/staff') return '/staff'
   if (to.meta.auth && !auth.isAuth) return { path: '/login', query: { redirect: to.fullPath } }
-  if (to.meta.admin && auth.user?.role !== 'admin') return '/' // админка — только для роли admin (сервер проверяет то же самое)
-  if (to.meta.staff && auth.user?.role !== 'worker') return auth.user?.role === 'admin' ? '/admin' : '/' // сервер проверяет то же самое
+  if (to.meta.admin && !isAdminRole(auth.user?.role)) return '/' // админка — главный и младший администратор (сервер проверяет то же самое)
+  if (to.meta.staff && auth.user?.role !== 'worker') return isAdminRole(auth.user?.role) ? '/admin' : '/' // сервер проверяет то же самое
   if (to.meta.guest && auth.isAuth) return '/'
   return true
 })

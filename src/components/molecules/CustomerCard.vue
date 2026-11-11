@@ -17,9 +17,10 @@ const showOrders = ref(false)
 const showBonus = ref(false)
 
 const props = defineProps<{ user: AdminUser; busy?: boolean }>()
-// role: true — сделать работником (раздел заказов для работников), false — снова покупатель;
+// role: worker — сделать работником (раздел заказов для работников), manager — младшим администратором
+// (админка без клиентов, акций и отчётов), customer — снова покупатель;
 // bonus — баллы начислены (points > 0) или сняты: user — клиент уже с новым балансом
-const emit = defineEmits<{ segment: [value: Segment | null]; role: [worker: boolean]; bonus: [user: AdminUser, points: number] }>()
+const emit = defineEmits<{ segment: [value: Segment | null]; role: [role: 'worker' | 'manager' | 'customer']; bonus: [user: AdminUser, points: number] }>()
 function bonusDone(user: AdminUser, points: number) {
   showBonus.value = false
   emit('bonus', user, points)
@@ -45,6 +46,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <span class="cu__seg" :class="`is-${u.segment}`">{{ SEGMENT_ICON[u.segment] }} {{ $t('segments.short.' + u.segment) }}</span>
         <span v-if="u.segmentManual" class="cu__tag">{{ $t('admin.customers.manual') }}</span>
         <span v-if="u.role === 'admin'" class="cu__tag">⚙ {{ $t('admin.link') }}</span>
+        <span v-else-if="u.role === 'manager'" class="cu__tag is-worker">🛠 {{ $t('admin.customers.role.manager') }}</span>
         <span v-else-if="u.role === 'worker'" class="cu__tag is-worker">🧑‍🍳 {{ $t('admin.customers.role.worker') }}</span>
       </div>
       <div class="cu__contacts">
@@ -89,10 +91,17 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <option v-for="o in options" :key="o.value" :value="o.value">{{ o.label }}</option>
       </AppInput>
     </label>
-    <!-- работник: доступ только к заказам (кнопка «Готово»); администратора здесь не поменять -->
-    <button v-if="u.role !== 'admin'" type="button" class="cu__role" :disabled="busy" @click="emit('role', u.role !== 'worker')">
-      {{ u.role === 'worker' ? '↩ ' + $t('admin.customers.role.undo') : '🧑‍🍳 ' + $t('admin.customers.role.make') }}
-    </button>
+    <!-- работник: доступ только к заказам (кнопка «Готово»); младший администратор: админка без клиентов, акций и отчётов;
+         главного администратора здесь не поменять -->
+    <div v-if="u.role !== 'admin'" class="cu__roles">
+      <button v-if="u.role === 'worker' || u.role === 'manager'" type="button" class="cu__role" :disabled="busy" @click="emit('role', 'customer')">
+        ↩ {{ $t(u.role === 'worker' ? 'admin.customers.role.undo' : 'admin.customers.role.undoManager') }}
+      </button>
+      <template v-else>
+        <button type="button" class="cu__role" :disabled="busy" @click="emit('role', 'worker')">🧑‍🍳 {{ $t('admin.customers.role.make') }}</button>
+        <button type="button" class="cu__role" :disabled="busy" @click="emit('role', 'manager')">🛠 {{ $t('admin.customers.role.makeManager') }}</button>
+      </template>
+    </div>
     <BonusAdjustForm v-if="showBonus" :user="u" class="cu__orders" @done="bonusDone" @cancel="showBonus = false" />
     <CustomerOrders v-if="showOrders" :user-id="u.id" class="cu__orders" />
   </article>
@@ -127,7 +136,8 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
 .cu__more:hover { background:var(--yellow); }
 .cu__orders { flex-basis:100%; min-width:0; }
 .cu__tag.is-worker { border-color:var(--yellow); background:var(--cream); color:#7a5600; }
-.cu__role { align-self:flex-end; padding:4px 0; border:0; background:none; color:var(--muted); font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:3px; }
+.cu__roles { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 16px; align-self:flex-end; }
+.cu__role { padding:4px 0; border:0; background:none; color:var(--muted); font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:3px; }
 .cu__role:hover:not(:disabled) { color:var(--ink); }
 .cu__role:disabled { opacity:.5; cursor:not-allowed; }
 @media (max-width:640px) { .cu { padding:12px 14px 14px 20px; } .cu__pick { flex-basis:100%; } }

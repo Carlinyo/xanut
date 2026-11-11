@@ -2,6 +2,8 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAdmin } from '../stores/admin'
+import { useAuth } from '../stores/auth'
+import { isOwner } from '../utils/roles'
 import { t } from '../i18n'
 import AdminOrders from '../components/organisms/AdminOrders.vue'
 import AdminCustomers from '../components/organisms/AdminCustomers.vue'
@@ -14,16 +16,20 @@ import AdminReviews from '../components/organisms/AdminReviews.vue'
 import AdminReports from '../components/organisms/AdminReports.vue'
 
 // Вкладка хранится в адресе (?tab=customers): после обновления страницы открыта та же
-const route = useRoute(), router = useRouter(), admin = useAdmin()
+const route = useRoute(), router = useRouter(), admin = useAdmin(), auth = useAuth()
 type Tab = 'orders' | 'customers' | 'catalog' | 'categories' | 'rewards' | 'codes' | 'reviews' | 'feedback' | 'reports'
 const TABS: Tab[] = ['orders', 'customers', 'catalog', 'categories', 'rewards', 'codes', 'reviews', 'feedback', 'reports']
-const tab = computed<Tab>(() => (TABS.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
+// клиенты (их данные и акции групп) и отчёты — только главному администратору; младшему этих вкладок нет (сервер ответит 403)
+const owner = computed(() => isOwner(auth.user?.role))
+const OWNER_TABS: Tab[] = ['customers', 'reports']
+const allowed = (x: Tab) => TABS.includes(x) && (owner.value || !OWNER_TABS.includes(x))
+const tab = computed<Tab>(() => (allowed(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders'))
 const open = (next: Tab) => router.replace({ query: next === 'orders' ? {} : { tab: next } })
 const activeCount = computed(() => admin.orders.filter((o) => !['done', 'cancelled'].includes(o.status)).length)
 // неразобранные жалобы и предложения и дела по отчётам — меткой на вкладке, даже если она не открыта
 onMounted(() => {
   if (!admin.feedbackLoaded) admin.loadFeedback().catch(() => {})
-  if (!admin.exports) admin.loadExports().catch(() => {})
+  if (owner.value && !admin.exports) admin.loadExports().catch(() => {})
 })
 // закончился месяц или неделя, а файл не скачан (или месяц не очищен) — напоминание над любой вкладкой, кроме отчётов
 const reminder = computed(() => {
@@ -32,7 +38,7 @@ const reminder = computed(() => {
   const m = ex.months.find((r) => r.todo)
   if (m) return t(m.todo === 'purge' ? 'admin.reports.banner.purge' : 'admin.reports.banner.download', { label: m.label })
   const w = ex.weeks.find((r) => r.todo)
-  return w ? t('admin.reports.banner.week', { label: w.label }) : null
+  return w ? t(w.todo === 'purge' ? 'admin.reports.banner.weekPurge' : 'admin.reports.banner.week', { label: w.label }) : null
 })
 </script>
 
@@ -44,7 +50,7 @@ const reminder = computed(() => {
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'orders' }" :aria-selected="tab === 'orders'" @click="open('orders')">
           📦 {{ $t('admin.tabs.orders') }}<span v-if="activeCount" class="adm__count" :class="{ 'is-new': admin.newIds.length && tab !== 'orders' }">{{ activeCount }}</span>
         </button>
-        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'customers' }" :aria-selected="tab === 'customers'" @click="open('customers')">
+        <button v-if="owner" type="button" role="tab" class="adm__tab" :class="{ on: tab === 'customers' }" :aria-selected="tab === 'customers'" @click="open('customers')">
           👥 {{ $t('admin.tabs.customers') }}
         </button>
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'catalog' }" :aria-selected="tab === 'catalog'" @click="open('catalog')">
@@ -65,7 +71,7 @@ const reminder = computed(() => {
         <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'feedback' }" :aria-selected="tab === 'feedback'" @click="open('feedback')">
           💬 {{ $t('admin.tabs.feedback') }}<span v-if="admin.feedbackNew" class="adm__count">{{ admin.feedbackNew }}</span>
         </button>
-        <button type="button" role="tab" class="adm__tab" :class="{ on: tab === 'reports' }" :aria-selected="tab === 'reports'" @click="open('reports')">
+        <button v-if="owner" type="button" role="tab" class="adm__tab" :class="{ on: tab === 'reports' }" :aria-selected="tab === 'reports'" @click="open('reports')">
           📊 {{ $t('admin.tabs.reports') }}<span v-if="admin.exports?.todo" class="adm__count">{{ admin.exports.todo }}</span>
         </button>
       </div>

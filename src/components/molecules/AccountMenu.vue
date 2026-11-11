@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PublicUser } from '../../types'
+import { isAdminRole } from '../../utils/roles'
 
 defineProps<{ user?: PublicUser | null; points?: number }>()
 defineEmits<{ logout: [] }>()
@@ -9,7 +10,7 @@ defineEmits<{ logout: [] }>()
   <div class="acct">
     <template v-if="user">
       <RouterLink v-if="points !== undefined" class="acct__pts" to="/bonus" :title="$t('bonus.chip')" :aria-label="`${$t('bonus.chip')}: ${points}`">⭐ {{ Math.max(0, points).toLocaleString('en-US') }}</RouterLink>
-      <RouterLink v-if="user.role === 'admin'" class="acct__item acct__admin" to="/admin" :aria-label="$t('admin.title')">⚙ <span class="acct__lbl acct__lbl--md">{{ $t('admin.link') }}</span></RouterLink>
+      <RouterLink v-if="isAdminRole(user.role)" class="acct__item acct__admin" to="/admin" :aria-label="$t('admin.title')">⚙ <span class="acct__lbl acct__lbl--md">{{ $t('admin.link') }}</span></RouterLink>
       <RouterLink v-else-if="user.role === 'worker'" class="acct__item acct__admin" to="/staff" :aria-label="$t('staff.title')">🧑‍🍳 <span class="acct__lbl acct__lbl--md">{{ $t('staff.link') }}</span></RouterLink>
       <RouterLink class="acct__item" to="/account" :aria-label="$t('account.mine')">👤 <span class="acct__lbl">{{ user.name }}</span></RouterLink>
       <button class="acct__item acct__out" type="button" :aria-label="$t('account.logout')" @click="$emit('logout')">

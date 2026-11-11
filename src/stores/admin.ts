@@ -124,8 +124,8 @@ export const useAdmin = defineStore('admin', {
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
     },
-    /** Роль: worker — работник (раздел «Պատվերներ» для работников), customer — обычный покупатель. */
-    async setRole(id: string, role: 'worker' | 'customer'): Promise<AdminUser> {
+    /** Роль: worker — работник (раздел «Պատվերներ» для работников), manager — младший администратор, customer — обычный покупатель. */
+    async setRole(id: string, role: 'worker' | 'manager' | 'customer'): Promise<AdminUser> {
       const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { role } })
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
