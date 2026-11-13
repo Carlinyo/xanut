@@ -13,10 +13,17 @@ import AppInput from '../components/atoms/AppInput.vue'
 type SortKey = 'default' | 'asc' | 'desc' | 'disc'
 const props = defineProps<{ offersOnly?: boolean }>()
 const route = useRoute(), ui = useUI(), catalog = useCatalog()
-const categories = computed(() => catalog.categories)
+// в «Հատուկ առաջարկներ» — только разделы, где есть спецпредложения: нет скидок и комбо на рыбу — нет и раздела рыбы
+const offerCats = computed(() => new Set(catalog.shopProducts.filter((p) => isOffer(p)).map((p) => p.categoryId)))
+const categories = computed(() => (props.offersOnly ? catalog.categories.filter((c) => offerCats.value.has(c.id)) : catalog.categories))
 const sort = ref<SortKey>('default')
 const base = computed(() => (props.offersOnly ? '/offers' : '/products'))
-const cat = computed(() => (route.query.cat === undefined ? null : Number(route.query.cat))) // id категории
+// id категории; в спецпредложениях раздел без предложений (старая ссылка, скидка закончилась) — показываем все предложения
+const cat = computed(() => {
+  if (route.query.cat === undefined) return null
+  const id = Number(route.query.cat)
+  return props.offersOnly && !offerCats.value.has(id) ? null : id
+})
 const category = computed(() => categories.value.find((c) => c.id === cat.value) ?? null)
 const title = computed(() =>
   props.offersOnly ? t('sections.offers')
