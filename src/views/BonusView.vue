@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { api, ApiError, commonErrorKey } from '../api'
 import { useAuth } from '../stores/auth'
@@ -17,6 +18,12 @@ import AppButton from '../components/atoms/AppButton.vue'
 import ProductArt from '../components/atoms/ProductArt.vue'
 
 const auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
+const route = useRoute(), router = useRouter()
+// Две вкладки: «Бонусы» (как работает, группы, коды, подарки, правила) и «История» баллов.
+// Вкладка хранится в адресе (?tab=history): после обновления страницы открыта та же. История — только у вошедших.
+type Tab = 'main' | 'history'
+const tab = computed<Tab>(() => (auth.isAuth && route.query.tab === 'history' ? 'history' : 'main'))
+const open = (next: Tab) => router.replace({ query: next === 'main' ? {} : { tab: next } })
 // свежий баланс и группа при каждом открытии; заказы — для списка «заказы этого месяца»
 const orders = ref<Order[]>([])
 const ordersState = ref<'loading' | 'ok' | 'error'>('loading')
@@ -157,6 +164,16 @@ function reviewed(id: number, review: OrderReview) {
       </div>
     </section>
 
+    <div v-if="auth.isAuth" class="tabs" role="tablist" :aria-label="$t('bonus.tabs.label')">
+      <button id="bonus-tab-main" type="button" role="tab" class="tabs__tab" :class="{ on: tab === 'main' }" :aria-selected="tab === 'main'" aria-controls="bonus-panel" @click="open('main')">
+        🎁 {{ $t('bonus.tabs.main') }}
+      </button>
+      <button id="bonus-tab-history" type="button" role="tab" class="tabs__tab" :class="{ on: tab === 'history' }" :aria-selected="tab === 'history'" aria-controls="bonus-panel" @click="open('history')">
+        📜 {{ $t('bonus.tabs.history') }}
+      </button>
+    </div>
+
+    <div v-if="tab === 'main'" id="bonus-panel" class="panel" :role="auth.isAuth ? 'tabpanel' : undefined" :aria-labelledby="auth.isAuth ? 'bonus-tab-main' : undefined">
     <section class="section">
       <SectionTitle>{{ $t('bonus.howTitle') }}</SectionTitle>
       <div v-reveal.stagger="'flip'" class="steps">
@@ -249,7 +266,19 @@ function reviewed(id: number, review: OrderReview) {
       </div>
     </section>
 
-    <section v-if="auth.isAuth" class="section">
+    <section class="section rules">
+      <h2>{{ $t('bonus.rulesTitle') }}</h2>
+      <ul>
+        <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
+        <li>{{ $t('bonus.firstOrderRule') }}</li>
+        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
+      </ul>
+    </section>
+    </div>
+
+    <!-- история баллов — отдельной вкладкой -->
+    <div v-else id="bonus-panel" class="panel" role="tabpanel" aria-labelledby="bonus-tab-history">
+    <section class="section">
       <SectionTitle>{{ $t('bonus.historyTitle') }}</SectionTitle>
       <p v-if="!histRows.length && !bonus.archived" class="muted">{{ $t('bonus.historyEmpty') }}</p>
       <ul v-else class="hist">
@@ -282,15 +311,7 @@ function reviewed(id: number, review: OrderReview) {
         </li>
       </ul>
     </section>
-
-    <section class="section rules">
-      <h2>{{ $t('bonus.rulesTitle') }}</h2>
-      <ul>
-        <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
-        <li>{{ $t('bonus.firstOrderRule') }}</li>
-        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
-      </ul>
-    </section>
+    </div>
   </div>
 </template>
 
@@ -306,6 +327,14 @@ function reviewed(id: number, review: OrderReview) {
 .hero-b__pending { color:#ffe2a0 !important; }
 .hero-b p.hero-b__gift { color:var(--yellow); font-weight:700; }
 .hero-b__cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
+/* вкладки «Бонусы / История» под карточкой баланса */
+.tabs { display:flex; gap:4px; width:fit-content; max-width:100%; margin-top:20px; padding:4px; border-radius:var(--pill); background:var(--dark); }
+.tabs__tab { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 20px; border:0; border-radius:var(--pill); background:none; color:#dfe8e6; font-size:15px; font-weight:700; white-space:nowrap; transition:background .2s, color .2s; }
+.tabs__tab:hover { color:#fff; background:var(--dark-2); }
+.tabs__tab.on { background:var(--yellow); color:#1b1500; }
+/* первый раздел вкладки — ближе к переключателю */
+.tabs + .panel > .section:first-child { margin-top:clamp(20px, 3vw, 32px); }
+@media (max-width:480px) { .tabs { width:100%; } .tabs__tab { flex:1; padding-inline:12px; } }
 .steps { display:grid; grid-template-columns:repeat(3, 1fr); border-radius:var(--r-lg); background:var(--bg); }
 .steps > :not(:first-child) { border-left:1px solid var(--line); }
 .lvl-lead { max-width:70ch; margin:-6px 0 16px; color:var(--muted); font-size:15px; line-height:1.55; }

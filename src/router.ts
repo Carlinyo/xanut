@@ -17,8 +17,9 @@ const BonusView = () => import('./views/BonusView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
-  // «Назад»/«Вперёд» в браузере возвращают на прежнее место страницы, новый переход — наверх
-  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
+  // «Назад»/«Вперёд» в браузере возвращают на прежнее место страницы, новый переход — наверх.
+  // meta.keepScroll — смена вкладки на той же странице (?tab=...) не прокручивает наверх.
+  scrollBehavior: (to, from, saved) => saved ?? (to.meta.keepScroll && to.path === from.path ? false : { top: 0 }),
   routes: [
     // meta.catalog — странице нужен каталог: пока он грузится, вместо неё показывается «Загрузка»
     { path: '/', component: HomeView, meta: { catalog: true } },
@@ -29,7 +30,7 @@ const router = createRouter({
     { path: '/about', component: AboutView, meta: { title: 'about.title' } },
     { path: '/contact', component: ContactView, meta: { title: 'contact.title' } },
     { path: '/privacy', component: PrivacyView, meta: { title: 'privacy.title' } },
-    { path: '/bonus', component: BonusView, meta: { catalog: true, title: 'bonus.title' } },
+    { path: '/bonus', component: BonusView, meta: { catalog: true, keepScroll: true, title: 'bonus.title' } },
     { path: '/login', component: AuthView, props: { mode: 'login' }, meta: { guest: true, title: 'auth.login' } },
     { path: '/register', component: AuthView, props: { mode: 'register' }, meta: { guest: true, title: 'auth.registerBtn' } },
     { path: '/forgot', component: AuthView, props: { mode: 'reset' }, meta: { guest: true, title: 'reset.title' } },

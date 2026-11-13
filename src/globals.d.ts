@@ -11,6 +11,6 @@ declare module 'vue' {
   }
 }
 declare module 'vue-router' {
-  interface RouteMeta { auth?: boolean; guest?: boolean; admin?: boolean; staff?: boolean; bare?: boolean; catalog?: boolean; title?: string }
+  interface RouteMeta { auth?: boolean; guest?: boolean; admin?: boolean; staff?: boolean; bare?: boolean; catalog?: boolean; keepScroll?: boolean; title?: string }
 }
 export {}
