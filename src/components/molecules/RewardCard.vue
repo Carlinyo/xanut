@@ -8,8 +8,8 @@ import type { Product } from '../../types'
 
 const props = defineProps<{
   product: Product
-  /** guest — не вошёл; lack — не хватает баллов; out — нет в наличии; ok — можно обменять */
-  status: 'guest' | 'lack' | 'out' | 'ok'
+  /** guest — не вошёл; first — ещё нет полученного заказа; lack — не хватает баллов; out — нет в наличии; ok — можно обменять */
+  status: 'guest' | 'first' | 'lack' | 'out' | 'ok'
   lack?: number
   /** идёт обмен — кнопку не нажать второй раз */
   busy?: boolean
@@ -29,6 +29,7 @@ const points = computed(() => props.product.bonusPoints ?? 0)
     <AppButton v-if="status === 'ok'" block size="sm" :disabled="busy" @click="$emit('get', product)">🎟 {{ $t('bonus.get') }}</AppButton>
     <AppButton v-else-if="status === 'guest'" block size="sm" variant="light" :to="{ path: '/login', query: { redirect: '/bonus' } }">{{ $t('bonus.loginToGet') }}</AppButton>
     <p v-else-if="status === 'out'" class="rw__lock">⛔ {{ $t('stock.out') }}</p>
+    <p v-else-if="status === 'first'" class="rw__lock">🔒 {{ $t('bonus.afterFirstOrder') }}</p>
     <p v-else class="rw__lock">🔒 {{ $t('bonus.lack', { n: (lack ?? 0).toLocaleString('en-US') }) }}</p>
   </article>
 </template>

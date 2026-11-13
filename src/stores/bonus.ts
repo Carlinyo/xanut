@@ -11,6 +11,8 @@ export const useBonus = defineStore('bonus', {
     archived: null as BonusInfo['archived'],
     /** Баллы не за заказы: подарок при регистрации, начисления и списания магазина (новые первыми). */
     adjustments: [] as BonusAdjustment[],
+    /** Подарки за баллы — только после первого полученного заказа (решает сервер). */
+    canRedeem: true,
   }),
   getters: {
     /** Бонусные товары — из каталога (товары с ценой в баллах), дешёвые первыми. */
@@ -27,7 +29,7 @@ export const useBonus = defineStore('bonus', {
     async load() {
       try {
         const r = await api<BonusInfo>('/bonus')
-        Object.assign(this, r, { redemptions: r.redemptions ?? [], level: r.level ?? null, archived: r.archived ?? null, adjustments: r.adjustments ?? [], loaded: true })
+        Object.assign(this, r, { redemptions: r.redemptions ?? [], level: r.level ?? null, archived: r.archived ?? null, adjustments: r.adjustments ?? [], canRedeem: r.canRedeem ?? true, loaded: true })
       } catch { /* гость или нет связи — покажем без баланса */ }
     },
     /** Обменять баллы на подарок: сервер списывает баллы и выдаёт код, который покупатель показывает продавцу. */
@@ -49,6 +51,6 @@ export const useBonus = defineStore('bonus', {
       if (this.level) this.level.notice = null
       try { await api('/bonus/notice/seen', { method: 'POST' }) } catch { /* не вышло — покажется снова при следующем открытии */ }
     },
-    reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, archived: null, adjustments: [], loaded: false }) },
+    reset() { Object.assign(this, { available: 0, pending: 0, history: [], redemptions: [], level: null, archived: null, adjustments: [], canRedeem: true, loaded: false }) },
   },
 })

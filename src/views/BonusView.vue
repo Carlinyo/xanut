@@ -42,9 +42,10 @@ const histRows = computed<HistRow[]>(() => [
 ].sort((a, b) => b.at.localeCompare(a.at)))
 const adjTitle = (a: BonusAdjustment) => t(a.kind === 'welcome' ? 'bonus.adjust.welcome' : a.points > 0 ? 'bonus.adjust.added' : 'bonus.adjust.taken')
 
-function statusOf(p: Product): 'guest' | 'lack' | 'out' | 'ok' {
+function statusOf(p: Product): 'guest' | 'first' | 'lack' | 'out' | 'ok' {
   if (p.inStock === false) return 'out'
   if (!auth.isAuth) return 'guest'
+  if (!bonus.canRedeem) return 'first' // подарки — после первого полученного заказа
   return (p.bonusPoints ?? 0) <= left.value ? 'ok' : 'lack'
 }
 
@@ -71,6 +72,9 @@ async function get(p: Product) {
     if (code === 'BONUS_INSUFFICIENT') {
       bonus.available = Number((e as ApiError).details.available ?? 0) // баллов меньше, чем думал сайт — показываем настоящий баланс
       error.value = t('bonus.notEnough', { available: nf(bonus.available) })
+    } else if (code === 'FIRST_ORDER_REQUIRED') {
+      bonus.canRedeem = false
+      error.value = t('bonus.firstOrder')
     } else if (code === 'NOT_BONUS' || code === 'OUT_OF_STOCK') {
       error.value = t('bonus.gone')
       void catalog.load(true)
@@ -230,6 +234,12 @@ function reviewed(id: number, review: OrderReview) {
     <section class="section">
       <SectionTitle>{{ $t('bonus.rewardsTitle') }}</SectionTitle>
       <p v-if="error" class="err" role="alert">{{ error }}</p>
+      <!-- подарки откроются после первого полученного заказа -->
+      <div v-else-if="auth.isAuth && !bonus.canRedeem && bonus.rewards.length" class="first">
+        <span aria-hidden="true">🔒</span>
+        <p>{{ $t('bonus.firstOrder') }}</p>
+        <AppButton size="sm" to="/products">🛒 {{ $t('bonus.firstOrderCta') }}</AppButton>
+      </div>
       <p v-if="!bonus.rewards.length" class="muted">{{ $t('bonus.rewardsEmpty') }}</p>
       <div v-else v-reveal.stagger class="rewards">
         <RewardCard
@@ -277,6 +287,7 @@ function reviewed(id: number, review: OrderReview) {
       <h2>{{ $t('bonus.rulesTitle') }}</h2>
       <ul>
         <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
+        <li>{{ $t('bonus.firstOrderRule') }}</li>
         <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
       </ul>
     </section>
@@ -335,6 +346,9 @@ function reviewed(id: number, review: OrderReview) {
 .mon__more { margin-top:12px; }
 @media (max-width:900px) { .mon { grid-template-columns:1fr 1fr; } .mon__status { grid-column:1 / -1; } }
 @media (max-width:560px) { .mon { grid-template-columns:1fr; } }
+.first { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; margin-bottom:14px; padding:12px 16px; border:1.5px dashed var(--yellow-lo, #e9a300); border-radius:var(--r-md); background:#fff8e1; }
+.first > span { font-size:22px; }
+.first p { flex:1 1 220px; margin:0; font-size:14px; font-weight:600; }
 .err { padding:10px 14px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:14px; }
 .codes-sec { scroll-margin-top:120px; }
 .codes { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }

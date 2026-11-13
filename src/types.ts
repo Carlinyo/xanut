@@ -150,6 +150,8 @@ export interface BonusInfo {
   archived?: { earned: number; spent: number } | null
   /** Баллы не за заказы (подарок при регистрации, начисления и списания магазина), новые первыми; нет у старого сервера. */
   adjustments?: BonusAdjustment[]
+  /** Можно ли брать подарки за баллы: только после первого полученного заказа (нет у старого сервера — можно). */
+  canRedeem?: boolean
 }
 export interface Order {
   id: number; status: string; createdAt: string

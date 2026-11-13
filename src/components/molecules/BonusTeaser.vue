@@ -1,18 +1,16 @@
 <script setup lang="ts">
-// Полоса на главной: «2% возвращается баллами» → страница бонусов.
-import { useBonus } from '../../stores/bonus'
-import ProductArt from '../atoms/ProductArt.vue'
-const bonus = useBonus()
+// Полоса на главной → страница бонусов. Что именно дают за баллы, здесь не говорится: текст-интрига
+// и три закрытых «подарка» со знаком вопроса — ответ на странице бонусов.
 </script>
 
 <template>
   <RouterLink v-reveal="'zoom'" to="/bonus" class="teaser-b">
     <span class="teaser-b__gift" aria-hidden="true">🎁</span>
     <div class="teaser-b__txt">
-      <h3>{{ $t('bonus.teaserTitle', { percent: bonus.percent }) }}</h3>
+      <h3>{{ $t('bonus.teaserTitle') }}</h3>
       <p>{{ $t('bonus.teaserText') }}</p>
     </div>
-    <span class="teaser-b__arts" aria-hidden="true"><ProductArt kind="bread" /><ProductArt kind="grill" /><ProductArt kind="spice" /></span>
+    <span class="teaser-b__arts" aria-hidden="true"><i>?</i><i>?</i><i>?</i></span>
     <span class="teaser-b__cta">{{ $t('bonus.teaserCta') }} →</span>
   </RouterLink>
 </template>
@@ -26,7 +24,13 @@ h3 { margin:0 0 4px; font-size:clamp(18px, 2.2vw, 24px); }
 p { margin:0; font-size:14px; color:#4a3700; }
 .teaser-b__cta { flex:none; position:relative; z-index:1; padding:9px 18px; border-radius:var(--pill); background:var(--dark); color:#fff; font-size:14px; font-weight:700; transition:padding .3s var(--ease); }
 .teaser-b__arts { flex:none; display:flex; pointer-events:none; }
-.teaser-b__arts > * { width:64px; height:64px; margin-left:-14px; filter:drop-shadow(0 8px 10px rgb(90 60 0 / .35)); }
+.teaser-b__arts > i { display:grid; place-items:center; width:56px; height:56px; margin-left:-12px; border:2px dashed rgb(27 21 0 / .45); border-radius:16px;
+  background:rgb(255 255 255 / .35); color:#1b1500; font-size:28px; font-weight:800; font-style:normal; box-shadow:0 8px 14px rgb(90 60 0 / .25);
+  animation:teaser-q 2.4s var(--ease) infinite; }
+.teaser-b__arts > i:nth-child(2) { animation-delay:.3s; transform:rotate(6deg); }
+.teaser-b__arts > i:nth-child(3) { animation-delay:.6s; }
+@keyframes teaser-q { 0%, 100% { translate:0 0; } 50% { translate:0 -5px; } }
+@media (prefers-reduced-motion:reduce) { .teaser-b__arts > i { animation:none; } }
 .teaser-b__arts > :nth-child(2) { transform:translateY(-6px) rotate(-6deg); }
 @media (hover:hover) { .teaser-b:hover { transform:translateY(-3px); box-shadow:0 24px 40px -24px rgb(120 80 0 / .9); } .teaser-b:hover .teaser-b__cta { padding-inline:24px; } }
 @media (max-width:1000px) { .teaser-b__arts { display:none; } }
