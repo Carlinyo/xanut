@@ -6,6 +6,8 @@ import { ApiError, commonErrorKey } from '../../api'
 import { useAuth } from '../../stores/auth'
 import type { OtpChallenge } from '../../types'
 import OtpInput from '../molecules/OtpInput.vue'
+import SpamNotice from '../molecules/SpamNotice.vue'
+import { useCodeDelivery } from '../../composables/useCodeDelivery'
 import AppButton from '../atoms/AppButton.vue'
 import AppToggle from '../atoms/AppToggle.vue'
 
@@ -36,6 +38,10 @@ onUnmounted(() => clearInterval(timer))
 
 const sentTo = computed(() => t('otp.sentEmail', { to: props.challenge.destination }))
 
+// письмо с кодом не дошло (ящик переполнен, адреса нет) — сервер узнаёт об этом через несколько секунд
+const delivery = useCodeDelivery()
+if (!devCode.value) delivery.watch(props.challenge.challengeId)
+
 async function submit() {
   if (code.value.length !== 6 || busy.value || finished.value) return
   error.value = ''
@@ -44,6 +50,7 @@ async function submit() {
   try {
     await auth.verify(props.challenge.challengeId, code.value, trust.value)
     finished.value = true
+    delivery.stop()
     emit('done')
   } catch (e) {
     const c = e instanceof ApiError ? e.code : ''
@@ -68,6 +75,7 @@ async function resend() {
     code.value = ''
     info.value = t('otp.resent')
     startTimer(r.resendIn)
+    if (!devCode.value) delivery.watch(props.challenge.challengeId)
   } catch (e) {
     const c = e instanceof ApiError ? e.code : ''
     if (c === 'OTP_EXPIRED') { expired.value = true; error.value = t('otp.expired') }
@@ -86,6 +94,8 @@ async function resend() {
     <span class="otp-step__icon" aria-hidden="true">✉️</span>
     <h1>{{ $t('otp.title') }}</h1>
     <p class="muted" role="status">{{ sentTo }}</p>
+    <p v-if="delivery.problem.value" class="otp-step__bounce" role="alert">⚠️ {{ $t(`otp.bounce.${delivery.problem.value}`) }}</p>
+    <SpamNotice v-else-if="!devCode" />
 
     <div v-if="devCode" class="otp-step__dev" role="note">
       <b>🧪 {{ $t('otp.devTitle') }}</b>
@@ -123,6 +133,7 @@ p { margin:0; }
 .otp-step__link { padding:4px 0; border:0; background:none; color:var(--yellow-lo); font-size:14px; font-weight:700; }
 .otp-step__link:disabled { color:var(--muted); font-weight:600; cursor:default; }
 .otp-step__hint { font-size:12px; }
+.otp-step__bounce { margin:0; padding:10px 12px; border-radius:var(--r-md); background:#fdecea; color:var(--red); font-size:13.5px; font-weight:600; line-height:1.45; text-align:left; }
 .otp-step__dev { display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 14px; border:1.5px dashed #c99a2e; border-radius:var(--r-md); background:var(--cream); font-size:13px; }
 .otp-step__devcode { padding:6px 14px; border:0; border-radius:var(--pill); background:var(--yellow); color:#1b1500; font-weight:800; font-size:18px; letter-spacing:.18em; }
 .otp-step__devcode small { font-size:12px; letter-spacing:0; font-weight:700; }

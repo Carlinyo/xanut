@@ -11,6 +11,8 @@ import { passwordError, rules, serverFieldErrors } from '../../validators'
 import FormField from '../molecules/FormField.vue'
 import PasswordField from '../molecules/PasswordField.vue'
 import OtpInput from '../molecules/OtpInput.vue'
+import SpamNotice from '../molecules/SpamNotice.vue'
+import { useCodeDelivery } from '../../composables/useCodeDelivery'
 import AppButton from '../atoms/AppButton.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuth()
@@ -56,6 +58,9 @@ watch(() => [form.password, form.confirm], () => {
   if (errors.confirm && form.confirm === form.password) errors.confirm = ''
 })
 
+// письмо с кодом не дошло (ящик переполнен, адреса нет) — сервер узнаёт об этом через несколько секунд
+const delivery = useCodeDelivery()
+
 async function sendCode() {
   if (busy.value) return
   errors.form = ''
@@ -71,6 +76,7 @@ async function sendCode() {
     info.value = ''
     startTimer(c.resendIn)
     step.value = 'code'
+    if (!devCode.value) delivery.watch(c.challengeId)
   } catch (e) {
     const code = e instanceof ApiError ? e.code : ''
     if (code === 'NOT_FOUND') { notFound.value = true; errors.email = t('reset.notFound') }
@@ -120,6 +126,7 @@ async function resend() {
     form.code = ''
     info.value = t('otp.resent')
     startTimer(r.resendIn)
+    if (!devCode.value) delivery.watch(challenge.value.challengeId)
   } catch (e) {
     const c = e instanceof ApiError ? e.code : ''
     if (c === 'OTP_EXPIRED') { expired.value = true; errors.form = t('otp.expired') }
@@ -133,6 +140,7 @@ async function resend() {
 }
 
 function restart() {
+  delivery.stop()
   step.value = 'email'
   challenge.value = null
   errors.form = ''
@@ -162,6 +170,8 @@ function restart() {
       <span class="rs__icon" aria-hidden="true">✉️</span>
       <h1>{{ $t('reset.newTitle') }}</h1>
       <p class="muted">{{ $t('otp.sentEmail', { to: challenge.destination }) }}</p>
+      <p v-if="delivery.problem.value" class="rs__err" role="alert">⚠️ {{ $t(`otp.bounce.${delivery.problem.value}`) }}</p>
+      <SpamNotice v-else-if="!devCode" />
 
       <div v-if="devCode" class="rs__dev" role="note">
         <b>🧪 {{ $t('otp.devTitle') }}</b>
