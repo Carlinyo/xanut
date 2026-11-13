@@ -15,7 +15,8 @@ import { uuid } from '../../utils/id'
 import { useSlots } from '../../composables/useSlots'
 import { useAddressCheck } from '../../composables/useAddressCheck'
 import { useShopHours } from '../../composables/useShopHours'
-import { distanceKm, GeoError, geoErrorKey, inZone, locate, reverseAddress } from '../../utils/geo'
+import { useGeoPoint } from '../../composables/useGeoPoint'
+import { distanceKm, inZone } from '../../utils/geo'
 import { paymentLabel } from '../../utils/payment'
 import FormField from '../molecules/FormField.vue'
 import PhoneField from '../molecules/PhoneField.vue'
@@ -33,9 +34,6 @@ const emit = defineEmits<{ done: [result: 'ok' | 'online' | 'weigh'] }>()
 const cart = useCart(), auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 const form = reactive({ name: '', phone: '', address: '', point: null as GeoPoint | null, slot: '', payment: 'cash' as PaymentMethod, comment: '' })
 const errors = reactive({ name: '', phone: '', address: '', slot: '', form: '' })
-const geoMsg = ref('') // ошибка геолокации или подсказка «допишите адрес»
-const geoErr = ref(false) // geoMsg — ошибка (красным), а не подсказка
-function showGeo(text: string, error = true) { geoMsg.value = text; geoErr.value = error }
 
 // «Мои данные» — имя, телефон и адрес из аккаунта (сохранены при регистрации и прошлых заказах); «Новые данные» — ввести другие
 type Who = 'saved' | 'new'
@@ -50,11 +48,9 @@ const savedHasAddress = computed(() => !!saved.value?.address)
 // поле адреса в «моих данных»: покупатель хочет другой адрес или сохранённый не прошёл проверку
 const editAddress = ref(false)
 
-// Точка доставки на карте (геолокация или выбор на карте) — по ней курьер найдёт место, а текст адреса — описание к ней.
-// Дописали к тексту подъезд или квартиру — точка остаётся; переписали адрес — точка снимается (она про другое место).
-let pointText = ''
-function setPoint(p: GeoPoint | null, text = '') { form.point = p; pointText = text }
-watch(() => form.address, (v) => { if (form.point && !v.includes(pointText)) setPoint(null) })
+// Точка доставки на карте: «Моё местоположение» и «Отметить на карте» (то же — в профиле)
+const { zone, msg: geoMsg, msgError: geoErr, setPoint, map, openMap, onMapPick, locating, useMyLocation } =
+  useGeoPoint(form, { onError: fail, onPoint: () => { errors.address = '' } })
 
 function fillWho() {
   editAddress.value = false
@@ -110,54 +106,8 @@ function checkPhoneField() { // проверка, когда покупател�
 // ошибка поля исчезает, как только значение исправили
 watch(() => form.phone, () => { if (errors.phone && phoneOk.value) errors.phone = '' })
 watch(() => form.name, () => { if (errors.name && rules.name(form.name) === true) errors.name = '' })
-watch(() => form.address, () => { errors.address = ''; geoMsg.value = '' }) // прежний результат проверки относится к старому тексту
+watch(() => form.address, () => { errors.address = '' }) // прежний результат проверки относится к старому тексту
 watch(() => form.slot, (v) => { if (v) errors.slot = '' })
-
-// «Моё местоположение» и «Отметить на карте»
-const zone = computed(() => catalog.config.zone)
-const ACCURATE_M = 100 // геолокация точнее — сразу подставляем адрес; грубее (компьютер, Wi‑Fi) — открываем карту, чтобы поправить
-const outOfZone = () => t('map.outOfZone', { km: zone.value?.radiusKm ?? '' })
-const locating = ref(false)
-const map = reactive({ open: false, start: null as GeoPoint | null, accuracy: undefined as number | undefined, note: '' })
-function openMap(start: GeoPoint | null = form.point, accuracy?: number, note = '') {
-  Object.assign(map, { open: true, start, accuracy, note })
-}
-/** Точка выбрана: адрес места — в поле (если геокодер его знает), иначе просим покупателя написать адрес самому. */
-function usePoint(p: GeoPoint, text: string) {
-  if (text) form.address = text
-  setPoint({ lat: p.lat, lon: p.lon }, text)
-  showGeo(text ? '' : t('checkout.pointNoAddress'), false)
-  errors.address = ''
-}
-function onMapPick(p: GeoPoint, text: string) {
-  map.open = false
-  usePoint(p, text)
-}
-async function useMyLocation() {
-  if (locating.value) return
-  geoMsg.value = ''
-  locating.value = true
-  try {
-    const here = await locate()
-    if (here.accuracy > ACCURATE_M) { openMap(here, here.accuracy, t('map.refine')); return }
-    if (!inZone(zone.value, here)) { showGeo(outOfZone()); return }
-    let text = ''
-    try {
-      const r = await reverseAddress(here)
-      if (!r.inZone) { showGeo(outOfZone()); return }
-      text = r.formatted
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) throw e
-      // адрес места не узнали (геокодер или сеть) — точку всё равно ставим, адрес покупатель напишет сам
-    }
-    usePoint(here, text)
-  } catch (e) {
-    if (e instanceof GeoError) showGeo(t(geoErrorKey(e)))
-    else await fail(e)
-  } finally {
-    locating.value = false
-  }
-}
 
 onMounted(loadSlots) // каждое открытие корзины — свежие данные о занятых окнах
 

@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
-import type { OtpChallenge, PublicUser } from '../types'
+import type { GeoPoint, OtpChallenge, PublicUser } from '../types'
 
 export interface RegisterData { name: string; email: string; phone: string; password: string; consent: boolean; address?: string }
-export interface ProfileData { name?: string; phone?: string; address?: string }
+/** point — точка адреса на карте; null — снять её, нет поля — не менять. */
+export interface ProfileData { name?: string; phone?: string; address?: string; point?: GeoPoint | null }
 
 const isChallenge = (r: unknown): r is OtpChallenge => typeof r === 'object' && r !== null && 'challengeId' in r
 let restoring: Promise<void> | null = null // восстановление сессии при старте — один запрос на всё приложение
