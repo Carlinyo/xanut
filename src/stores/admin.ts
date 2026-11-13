@@ -124,6 +124,12 @@ export const useAdmin = defineStore('admin', {
       this.users = this.users.map((x) => (x.id === u.id ? u : x))
       return u
     },
+    /** Подарки за баллы до первого полученного заказа: true — открыть, false — снова только после заказа. */
+    async setGiftsUnlocked(id: string, on: boolean): Promise<AdminUser> {
+      const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { giftsUnlocked: on } })
+      this.users = this.users.map((x) => (x.id === u.id ? u : x))
+      return u
+    },
     /** Роль: worker — работник (раздел «Պատվերներ» для работников), manager — младший администратор, customer — обычный покупатель. */
     async setRole(id: string, role: 'worker' | 'manager' | 'customer'): Promise<AdminUser> {
       const u = await api<AdminUser>(`/admin/users/${id}`, { method: 'PATCH', body: { role } })

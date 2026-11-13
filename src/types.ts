@@ -212,6 +212,10 @@ export interface AdminUser {
   orders: number; done: number; cancelled: number; spent: number; lastOrderAt: string | null
   /** adjustments — баллы вручную и подарок при регистрации, новые первыми (нет у старого сервера). */
   bonus: { available: number; pending: number; adjustments?: BonusAdjustment[] }
+  /** Подарки за баллы: giftsUnlocked — открыты главным администратором до первого заказа; canRedeem — открыты сейчас
+   *  (так или после полученного заказа). Нет у старого сервера. */
+  giftsUnlocked?: boolean
+  canRedeem?: boolean
 }
 /** Отчёт за неделю или месяц (раздел «Հաշվետվություններ»). final — закрытых заказов (их можно удалить после выгрузки),
  *  open — незакрытых (в пути, не оплачены). stale — после выгрузки закрылись новые заказы: файл надо скачать заново.

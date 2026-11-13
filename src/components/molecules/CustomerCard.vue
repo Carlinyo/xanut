@@ -19,8 +19,9 @@ const showBonus = ref(false)
 const props = defineProps<{ user: AdminUser; busy?: boolean }>()
 // role: worker — сделать работником (раздел заказов для работников), manager — младшим администратором
 // (админка без клиентов, акций и отчётов), customer — снова покупатель;
-// bonus — баллы начислены (points > 0) или сняты: user — клиент уже с новым балансом
-const emit = defineEmits<{ segment: [value: Segment | null]; role: [role: 'worker' | 'manager' | 'customer']; bonus: [user: AdminUser, points: number] }>()
+// bonus — баллы начислены (points > 0) или сняты: user — клиент уже с новым балансом;
+// gifts — открыть (true) или закрыть подарки за баллы до первого полученного заказа
+const emit = defineEmits<{ segment: [value: Segment | null]; role: [role: 'worker' | 'manager' | 'customer']; bonus: [user: AdminUser, points: number]; gifts: [on: boolean] }>()
 function bonusDone(user: AdminUser, points: number) {
   showBonus.value = false
   emit('bonus', user, points)
@@ -74,6 +75,13 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
           <dd>⭐ {{ nf(u.bonus.available) }}<small v-if="u.bonus.pending"> · +{{ nf(u.bonus.pending) }}</small></dd>
         </div>
         <div><dt>{{ $t('admin.customers.since') }}</dt><dd>{{ day(u.createdAt) }}</dd></div>
+        <!-- подарки за баллы: обычно после первого полученного заказа; главный администратор может открыть раньше -->
+        <div v-if="u.canRedeem !== undefined">
+          <dt>{{ $t('admin.customers.gifts.label') }}</dt>
+          <dd :class="{ 'cu__gifts-off': !u.canRedeem }">
+            {{ $t(u.giftsUnlocked ? 'admin.customers.gifts.openByAdmin' : u.canRedeem ? 'admin.customers.gifts.open' : 'admin.customers.gifts.locked') }}
+          </dd>
+        </div>
       </dl>
       <div class="cu__btns">
         <button v-if="u.orders || u.cancelled" type="button" class="cu__more" :aria-expanded="showOrders" @click="showOrders = !showOrders">
@@ -82,6 +90,9 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
         <button type="button" class="cu__more" :aria-expanded="showBonus" :disabled="busy" @click="showBonus = !showBonus">
           ⭐ {{ $t('admin.customers.bonus.open') }} <span aria-hidden="true">{{ showBonus ? '▴' : '▾' }}</span>
         </button>
+        <!-- подарки закрыты (заказа ещё нет) — открыть; открыты администратором — можно закрыть снова -->
+        <button v-if="u.canRedeem === false" type="button" class="cu__more" :disabled="busy" @click="emit('gifts', true)">{{ $t('admin.customers.gifts.unlock') }}</button>
+        <button v-else-if="u.giftsUnlocked" type="button" class="cu__more" :disabled="busy" @click="emit('gifts', false)">{{ $t('admin.customers.gifts.lock') }}</button>
       </div>
     </div>
     <label class="cu__pick">
@@ -128,6 +139,7 @@ const pick = (v: string) => { if (v !== choice.value) emit('segment', v === 'aut
 .cu__stats dt { color:var(--muted); font-size:12px; }
 .cu__stats dd { margin:0; font-weight:700; font-variant-numeric:tabular-nums; }
 .cu__stats small { color:var(--muted); font-weight:500; }
+.cu__stats dd.cu__gifts-off { color:var(--muted); font-weight:600; }
 .cu__pick { flex:0 1 250px; display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; }
 .cu__pick :deep(.field) { padding:9px 12px; }
 .cu__btns { display:flex; flex-wrap:wrap; gap:8px; }

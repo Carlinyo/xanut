@@ -100,6 +100,24 @@ async function setRole(u: AdminUser, role: 'worker' | 'manager' | 'customer') {
     busy.value.delete(u.id)
   }
 }
+/** Подарки за баллы до первого полученного заказа: открыть (on) или закрыть снова — после подтверждения. */
+async function setGifts(u: AdminUser, on: boolean) {
+  const key = on ? 'unlock' : 'lock'
+  const ok = await confirm.ask({
+    icon: on ? '🎁' : '↩️', title: t(`admin.customers.gifts.${key}Title`, { name: u.name }), text: t(`admin.customers.gifts.${key}Text`),
+    yes: t(`admin.customers.gifts.${key}Yes`), ...(on ? {} : { tone: 'danger' as const }),
+  })
+  if (!ok) return
+  busy.value.add(u.id)
+  try {
+    const r = await admin.setGiftsUnlocked(u.id, on)
+    say('ok', t(on ? 'admin.customers.gifts.unlocked' : 'admin.customers.gifts.relocked', { name: r.name }))
+  } catch (e) {
+    if (!authError(e)) say('bad', `${u.name}: ${t(commonErrorKey(e))}`)
+  } finally {
+    busy.value.delete(u.id)
+  }
+}
 function saved() {
   editing.value = false
   say('ok', t('admin.segments.saved'))
@@ -153,7 +171,7 @@ function bonusDone(u: AdminUser, points: number) {
     <template v-else-if="admin.usersLoaded">
       <p v-if="!shown.length" class="ac__empty">{{ query.trim() ? $t('admin.customers.emptySearch') : $t('admin.customers.empty') }}</p>
       <div v-else class="ac__list">
-        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" @role="setRole(u, $event)" @bonus="bonusDone" />
+        <CustomerCard v-for="u in visible" :key="u.id" :user="u" :busy="busy.has(u.id)" @segment="setSegment(u, $event)" @role="setRole(u, $event)" @bonus="bonusDone" @gifts="setGifts(u, $event)" />
       </div>
       <div v-if="shown.length > limit" class="ac__more">
         <AppButton variant="light" @click="limit += PAGE">{{ $t('admin.customers.more', { n: shown.length - limit }) }}</AppButton>
