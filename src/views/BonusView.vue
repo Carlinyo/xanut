@@ -19,11 +19,17 @@ import ProductArt from '../components/atoms/ProductArt.vue'
 
 const auth = useAuth(), bonus = useBonus(), catalog = useCatalog(), confirm = useConfirm()
 const route = useRoute(), router = useRouter()
-// Две вкладки: «Бонусы» (как работает, группы, коды, подарки, правила) и «История» баллов.
-// Вкладка хранится в адресе (?tab=history): после обновления страницы открыта та же. История — только у вошедших.
-type Tab = 'main' | 'history'
-const tab = computed<Tab>(() => (auth.isAuth && route.query.tab === 'history' ? 'history' : 'main'))
+// Три вкладки: «Бонусы» (статус этого месяца и подарки за баллы), «История» (коды подарков, история баллов, заказы
+// месяца) и «Информация» (как работает, группы клиентов, правила). Вкладка хранится в адресе (?tab=history, ?tab=info):
+// после обновления страницы открыта та же. История — только у вошедших; гостю видны «Бонусы» и «Информация».
+type Tab = 'main' | 'history' | 'info'
+const tab = computed<Tab>(() => (route.query.tab === 'info' ? 'info' : auth.isAuth && route.query.tab === 'history' ? 'history' : 'main'))
 const open = (next: Tab) => router.replace({ query: next === 'main' ? {} : { tab: next } })
+const tabs = computed(() => [
+  { id: 'main' as Tab, icon: '🎁' },
+  ...(auth.isAuth ? [{ id: 'history' as Tab, icon: '📜' }] : []),
+  { id: 'info' as Tab, icon: 'ℹ️' },
+])
 // свежий баланс и группа при каждом открытии; заказы — для списка «заказы этого месяца»
 const orders = ref<Order[]>([])
 const ordersState = ref<'loading' | 'ok' | 'error'>('loading')
@@ -72,6 +78,8 @@ async function get(p: Product) {
   error.value = ''
   try {
     fresh.value = (await bonus.redeem(p.id)).code
+    // коды подарков — во вкладке «История»: открываем её и показываем новый код
+    await open('history')
     await nextTick()
     codesBox.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   } catch (e) {
@@ -164,38 +172,17 @@ function reviewed(id: number, review: OrderReview) {
       </div>
     </section>
 
-    <div v-if="auth.isAuth" class="tabs" role="tablist" :aria-label="$t('bonus.tabs.label')">
-      <button id="bonus-tab-main" type="button" role="tab" class="tabs__tab" :class="{ on: tab === 'main' }" :aria-selected="tab === 'main'" aria-controls="bonus-panel" @click="open('main')">
-        🎁 {{ $t('bonus.tabs.main') }}
-      </button>
-      <button id="bonus-tab-history" type="button" role="tab" class="tabs__tab" :class="{ on: tab === 'history' }" :aria-selected="tab === 'history'" aria-controls="bonus-panel" @click="open('history')">
-        📜 {{ $t('bonus.tabs.history') }}
+    <div class="tabs" role="tablist" :aria-label="$t('bonus.tabs.label')">
+      <button
+        v-for="x in tabs" :id="`bonus-tab-${x.id}`" :key="x.id" type="button" role="tab" class="tabs__tab" :class="{ on: tab === x.id }"
+        :aria-selected="tab === x.id" aria-controls="bonus-panel" @click="open(x.id)"
+      >
+        {{ x.icon }} {{ $t('bonus.tabs.' + x.id) }}
       </button>
     </div>
 
-    <div v-if="tab === 'main'" id="bonus-panel" class="panel" :role="auth.isAuth ? 'tabpanel' : undefined" :aria-labelledby="auth.isAuth ? 'bonus-tab-main' : undefined">
-    <section class="section">
-      <SectionTitle>{{ $t('bonus.howTitle') }}</SectionTitle>
-      <div v-reveal.stagger="'flip'" class="steps">
-        <FeatureItem v-for="s in $t('bonus.steps')" :key="s.title" :icon="s.icon" :title="s.title" :text="s.text.replace('{percent}', String(percent))" />
-      </div>
-    </section>
-
-    <section v-if="segments" class="section">
-      <SectionTitle>{{ $t('segments.title') }}</SectionTitle>
-      <p class="lvl-lead">{{ $t('segments.lead') }}</p>
-      <div v-reveal.stagger class="lvls">
-        <article v-for="s in SEGMENTS" :key="s" class="lvl" :class="[`is-${s}`, { 'is-mine': level?.segment === s }]">
-          <span v-if="level?.segment === s" class="lvl__you">{{ $t('segments.you') }}</span>
-          <h3>{{ SEGMENT_ICON[s] }} {{ $t('segments.names.' + s) }}</h3>
-          <small class="lvl__rule">{{ ruleOf(s) }}</small>
-          <ul v-if="perkList(segments.perks[s]).length">
-            <li v-for="p in perkList(segments.perks[s])" :key="p">{{ p }}</li>
-          </ul>
-        </article>
-      </div>
-    </section>
-
+    <!-- «Բոնուսներ»: статус этого месяца и подарки за баллы -->
+    <div v-if="tab === 'main'" id="bonus-panel" class="panel" role="tabpanel" aria-labelledby="bonus-tab-main">
     <section v-if="level && segments" class="section">
       <SectionTitle>📅 {{ $t('segments.monthTitle') }}</SectionTitle>
       <p class="lvl-lead">{{ $t('segments.monthLead') }}</p>
@@ -219,33 +206,6 @@ function reviewed(id: number, review: OrderReview) {
           </div>
         </div>
       </div>
-      <h3 class="mon__title">{{ $t('segments.ordersTitle') }}</h3>
-      <p class="lvl-lead">{{ $t('segments.ordersLead') }}</p>
-      <p v-if="ordersState === 'loading'" class="muted">{{ $t('state.loading') }}</p>
-      <p v-else-if="ordersState === 'error'" class="muted">{{ $t('state.error') }}</p>
-      <p v-else-if="!monthOrders.length" class="muted">{{ $t('segments.ordersEmpty') }}</p>
-      <template v-else>
-        <OrdersList :orders="shownOrders" :marks="marks" @reviewed="reviewed" />
-        <AppButton v-if="!showAll && monthOrders.length > SHOWN" class="mon__more" variant="light" @click="showAll = true">
-          {{ $t('segments.ordersMore', { n: monthOrders.length - SHOWN }) }}
-        </AppButton>
-      </template>
-    </section>
-
-    <section v-if="auth.isAuth && bonus.redemptions.length" ref="codesBox" class="section codes-sec">
-      <SectionTitle>🎟 {{ $t('bonus.codesTitle') }}</SectionTitle>
-      <p class="lvl-lead">{{ $t('bonus.codesLead') }}</p>
-      <ul class="codes">
-        <li v-for="r in bonus.redemptions" :key="r.code" class="code" :class="[`is-${r.status}`, { 'is-fresh': r.code === fresh }]">
-          <span class="code__art"><ProductArt :kind="r.art" :src="r.image" :alt="r.name" /></span>
-          <div class="code__main">
-            <b>{{ r.name }}</b>
-            <small>{{ date(r.createdAt) }} · {{ $t('bonus.points', { n: nf(r.points) }) }} · {{ $t('bonus.codeStatus.' + r.status) }}</small>
-          </div>
-          <span class="code__val">{{ r.code }}</span>
-          <button v-if="r.status === 'pending'" type="button" class="code__cancel" :disabled="busyCode === r.code" @click="cancel(r)">{{ $t('bonus.cancelCode') }}</button>
-        </li>
-      </ul>
     </section>
 
     <section class="section">
@@ -265,19 +225,27 @@ function reviewed(id: number, review: OrderReview) {
         />
       </div>
     </section>
-
-    <section class="section rules">
-      <h2>{{ $t('bonus.rulesTitle') }}</h2>
-      <ul>
-        <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
-        <li>{{ $t('bonus.firstOrderRule') }}</li>
-        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
-      </ul>
-    </section>
     </div>
 
-    <!-- история баллов — отдельной вкладкой -->
-    <div v-else id="bonus-panel" class="panel" role="tabpanel" aria-labelledby="bonus-tab-history">
+    <!-- «Պատմություն»: коды подарков (их показывают продавцу), история баллов, заказы этого месяца -->
+    <div v-else-if="tab === 'history'" id="bonus-panel" class="panel" role="tabpanel" aria-labelledby="bonus-tab-history">
+    <section v-if="auth.isAuth && bonus.redemptions.length" ref="codesBox" class="section codes-sec">
+      <SectionTitle>🎟 {{ $t('bonus.codesTitle') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('bonus.codesLead') }}</p>
+      <p v-if="error" class="err" role="alert">{{ error }}</p>
+      <ul class="codes">
+        <li v-for="r in bonus.redemptions" :key="r.code" class="code" :class="[`is-${r.status}`, { 'is-fresh': r.code === fresh }]">
+          <span class="code__art"><ProductArt :kind="r.art" :src="r.image" :alt="r.name" /></span>
+          <div class="code__main">
+            <b>{{ r.name }}</b>
+            <small>{{ date(r.createdAt) }} · {{ $t('bonus.points', { n: nf(r.points) }) }} · {{ $t('bonus.codeStatus.' + r.status) }}</small>
+          </div>
+          <span class="code__val">{{ r.code }}</span>
+          <button v-if="r.status === 'pending'" type="button" class="code__cancel" :disabled="busyCode === r.code" @click="cancel(r)">{{ $t('bonus.cancelCode') }}</button>
+        </li>
+      </ul>
+    </section>
+
     <section class="section">
       <SectionTitle>{{ $t('bonus.historyTitle') }}</SectionTitle>
       <p v-if="!histRows.length && !bonus.archived" class="muted">{{ $t('bonus.historyEmpty') }}</p>
@@ -311,6 +279,54 @@ function reviewed(id: number, review: OrderReview) {
         </li>
       </ul>
     </section>
+
+    <section v-if="level" class="section">
+      <SectionTitle>🧾 {{ $t('segments.ordersTitle') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('segments.ordersLead') }}</p>
+      <p v-if="ordersState === 'loading'" class="muted">{{ $t('state.loading') }}</p>
+      <p v-else-if="ordersState === 'error'" class="muted">{{ $t('state.error') }}</p>
+      <p v-else-if="!monthOrders.length" class="muted">{{ $t('segments.ordersEmpty') }}</p>
+      <template v-else>
+        <OrdersList :orders="shownOrders" :marks="marks" @reviewed="reviewed" />
+        <AppButton v-if="!showAll && monthOrders.length > SHOWN" class="mon__more" variant="light" @click="showAll = true">
+          {{ $t('segments.ordersMore', { n: monthOrders.length - SHOWN }) }}
+        </AppButton>
+      </template>
+    </section>
+    </div>
+
+    <!-- «Տեղեկություններ»: как работает программа, группы клиентов и что они дают, правила -->
+    <div v-else id="bonus-panel" class="panel" role="tabpanel" aria-labelledby="bonus-tab-info">
+    <section class="section">
+      <SectionTitle>{{ $t('bonus.howTitle') }}</SectionTitle>
+      <div v-reveal.stagger="'flip'" class="steps">
+        <FeatureItem v-for="s in $t('bonus.steps')" :key="s.title" :icon="s.icon" :title="s.title" :text="s.text.replace('{percent}', String(percent))" />
+      </div>
+    </section>
+
+    <section v-if="segments" class="section">
+      <SectionTitle>{{ $t('segments.title') }}</SectionTitle>
+      <p class="lvl-lead">{{ $t('segments.lead') }}</p>
+      <div v-reveal.stagger class="lvls">
+        <article v-for="s in SEGMENTS" :key="s" class="lvl" :class="[`is-${s}`, { 'is-mine': level?.segment === s }]">
+          <span v-if="level?.segment === s" class="lvl__you">{{ $t('segments.you') }}</span>
+          <h3>{{ SEGMENT_ICON[s] }} {{ $t('segments.names.' + s) }}</h3>
+          <small class="lvl__rule">{{ ruleOf(s) }}</small>
+          <ul v-if="perkList(segments.perks[s]).length">
+            <li v-for="p in perkList(segments.perks[s])" :key="p">{{ p }}</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section rules">
+      <h2>{{ $t('bonus.rulesTitle') }}</h2>
+      <ul>
+        <li v-if="welcome > 0">{{ $t('bonus.welcomeRule', { n: nf(welcome) }) }}</li>
+        <li>{{ $t('bonus.firstOrderRule') }}</li>
+        <li v-for="r in $t('bonus.rules')" :key="r">{{ r.replace('{hours}', String(hours)) }}</li>
+      </ul>
+    </section>
     </div>
   </div>
 </template>
@@ -327,14 +343,16 @@ function reviewed(id: number, review: OrderReview) {
 .hero-b__pending { color:#ffe2a0 !important; }
 .hero-b p.hero-b__gift { color:var(--yellow); font-weight:700; }
 .hero-b__cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
-/* вкладки «Бонусы / История» под карточкой баланса */
+/* вкладки «Бонусы / История / Инфо» под карточкой баланса */
 .tabs { display:flex; gap:4px; width:fit-content; max-width:100%; margin-top:20px; padding:4px; border-radius:var(--pill); background:var(--dark); }
 .tabs__tab { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 20px; border:0; border-radius:var(--pill); background:none; color:#dfe8e6; font-size:15px; font-weight:700; white-space:nowrap; transition:background .2s, color .2s; }
 .tabs__tab:hover { color:#fff; background:var(--dark-2); }
 .tabs__tab.on { background:var(--yellow); color:#1b1500; }
 /* первый раздел вкладки — ближе к переключателю */
 .tabs + .panel > .section:first-child { margin-top:clamp(20px, 3vw, 32px); }
-@media (max-width:480px) { .tabs { width:100%; } .tabs__tab { flex:1; padding-inline:12px; } }
+/* на телефоне — во всю ширину; три вкладки ужимаются, чтобы поместиться в одну строку */
+@media (max-width:480px) { .tabs { width:100%; } .tabs__tab { flex:1 1 auto; gap:5px; padding-inline:10px; font-size:14px; } }
+@media (max-width:360px) { .tabs__tab { padding-inline:7px; font-size:13px; } }
 .steps { display:grid; grid-template-columns:repeat(3, 1fr); border-radius:var(--r-lg); background:var(--bg); }
 .steps > :not(:first-child) { border-left:1px solid var(--line); }
 .lvl-lead { max-width:70ch; margin:-6px 0 16px; color:var(--muted); font-size:15px; line-height:1.55; }
@@ -371,7 +389,6 @@ function reviewed(id: number, review: OrderReview) {
 .mon__track i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, #f6b21a, #f08a1a); transition:width .8s var(--ease); }
 .mon__bar.is-vip .mon__track i { background:linear-gradient(90deg, #3a4b47, var(--dark)); }
 .mon__bar.is-full .mon__track i { background:var(--green); }
-.mon__title { margin:26px 0 6px; font-size:18px; }
 .mon__more { margin-top:12px; }
 @media (max-width:900px) { .mon { grid-template-columns:1fr 1fr; } .mon__status { grid-column:1 / -1; } }
 @media (max-width:560px) { .mon { grid-template-columns:1fr; } }
